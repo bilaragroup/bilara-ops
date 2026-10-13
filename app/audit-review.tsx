@@ -3,7 +3,7 @@ import {useMemo,useState} from 'react';
 import {Checkbox} from '@/components/ui/checkbox';
 import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/components/ui/table';
 import {money} from '@/lib/calculations';
-import {addDays} from '@/lib/weekly';
+import {inPeriod,periodLabel,singleWeek,weekLabel,type Period} from '@/lib/weekly';
 import {lineSaving,planTotals} from '@/lib/purchase-plan';
 
 // Audit's view of the week's purchase plan: BOQ rate against the purchase team's
@@ -12,9 +12,10 @@ import {lineSaving,planTotals} from '@/lib/purchase-plan';
 
 const pct=(saving:number|null,base:number|null)=>saving==null||!base?'—':(Math.round(saving/base*1000)/10)+'%';
 
-export default function AuditReview({records,project,window,refresh,openRecord}:any){
- const scoped=useMemo(()=>records.filter((r:any)=>['plan','request'].includes(r.kind)&&r.window===window&&(project==='all'||r.project===project)),[records,project,window]);
- const pending=scoped.filter((r:any)=>r.stage==='Vendors finalized'&&r.closure?.state!=='Closed').sort((a:any,b:any)=>a.project.localeCompare(b.project)||String(a.item).localeCompare(String(b.item)));
+export default function AuditReview({records,project,window,period,refresh,openRecord}:any){
+ const per:Period=period||{key:'week',from:window,to:window},multi=!singleWeek(per);
+ const scoped=useMemo(()=>records.filter((r:any)=>['plan','request'].includes(r.kind)&&inPeriod(r.window,per)&&(project==='all'||r.project===project)),[records,project,per.from,per.to]);
+ const pending=scoped.filter((r:any)=>r.stage==='Vendors finalized'&&r.closure?.state!=='Closed').sort((a:any,b:any)=>String(a.window).localeCompare(String(b.window))||a.project.localeCompare(b.project)||String(a.item).localeCompare(String(b.item)));
  const approved=scoped.filter((r:any)=>r.stage==='Audit approved');
  const waiting=scoped.filter((r:any)=>['Submitted','BOQ priced'].includes(r.stage)).length;
  const [selected,setSelected]=useState<string[]>([]),[note,setNote]=useState(''),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
@@ -35,9 +36,9 @@ export default function AuditReview({records,project,window,refresh,openRecord}:
  return <section className="audit-review">
   <div className="metrics plan-metrics">
    <div className="metric"><p>Saving against BOQ (waiting)</p><strong className={totals.savingVsBoq<0?'neg':''}>{money(totals.savingVsBoq)}</strong><small>{totals.savingPercent==null?'No BOQ value':totals.savingPercent+'% of BOQ '+money(totals.boq)}</small></div>
-   <div className="metric"><p>Vendor value (waiting)</p><strong>{money(totals.vendor)}</strong><small>{pending.length} line{pending.length===1?'':'s'} · week {window} to {addDays(window,6)}</small></div>
+   <div className="metric"><p>Vendor value (waiting)</p><strong>{money(totals.vendor)}</strong><small>{pending.length} line{pending.length===1?'':'s'} · {periodLabel(per)}</small></div>
    <div className="metric"><p>Above BOQ rate</p><strong>{totals.aboveBoq}</strong><small>{totals.aboveTarget} above the purchasing target</small></div>
-   <div className="metric"><p>Approved this week</p><strong>{approved.length}</strong><small>Saving {money(approvedSaving)} · {waiting} still with BOQ / Purchase</small></div>
+   <div className="metric"><p>{multi?'Approved in these weeks':'Approved this week'}</p><strong>{approved.length}</strong><small>Saving {money(approvedSaving)} · {waiting} still with BOQ / Purchase</small></div>
   </div>
   {projects.length>1&&<div className="panel tablepanel"><div className="tablebar"><div><h2>Saving by project</h2></div></div><div className="scroll-x"><Table><TableHeader><TableRow><TableHead>Project</TableHead><TableHead>Lines</TableHead><TableHead>BOQ value</TableHead><TableHead>Vendor value</TableHead><TableHead>Saving</TableHead><TableHead>Saving %</TableHead><TableHead>Above BOQ</TableHead></TableRow></TableHeader><TableBody>{projects.map(p=><TableRow key={p.project}><TableCell><b>{p.project}</b></TableCell><TableCell>{p.lines}</TableCell><TableCell>{money(p.boq)}</TableCell><TableCell>{money(p.vendor)}</TableCell><TableCell><span className={p.savingVsBoq<0?'neg':'pos'}>{money(p.savingVsBoq)}</span></TableCell><TableCell>{p.savingPercent==null?'—':p.savingPercent+'%'}</TableCell><TableCell>{p.aboveBoq?<span className="tag red">{p.aboveBoq}</span>:'0'}</TableCell></TableRow>)}</TableBody></Table></div></div>}
   <div className="panel tablepanel">
@@ -47,7 +48,7 @@ export default function AuditReview({records,project,window,refresh,openRecord}:
    <div className="plan-scroll"><Table><TableHeader><TableRow><TableHead><Checkbox aria-label="Select all lines" checked={allSelected} onCheckedChange={(v)=>setSelected(v?pending.map((r:any)=>r.id):[])}/></TableHead><TableHead>Project / item</TableHead><TableHead>Qty</TableHead><TableHead>BOQ rate</TableHead><TableHead>Target</TableHead><TableHead>Vendor rate</TableHead><TableHead>Vendor</TableHead><TableHead>BOQ value</TableHead><TableHead>Vendor value</TableHead><TableHead>Saving</TableHead></TableRow></TableHeader>
    <TableBody>{pending.map((r:any)=>{const s=lineSaving(r),qc=r.quantityControl;return <TableRow key={r.id} className={s.aboveBoq?'row-bad':s.aboveTarget?'row-warn':''}>
     <TableCell><Checkbox aria-label={'Select '+r.item} checked={selected.includes(r.id)} onCheckedChange={(v)=>setSelected(v?[...selected,r.id]:selected.filter(x=>x!==r.id))}/></TableCell>
-    <TableCell><button className="rowlink" onClick={()=>openRecord(r)}><b>{r.item}</b><span>Project {r.project} · M{r.milestone} · Act {r.activity} {r.activityName}{r.kind==='request'?' · Ad hoc':''}</span></button><div className="plan-status">{qc?.excess?<span className="tag amber">+{qc.excess} {r.unit} over activity BOQ</span>:<span className="tag green">Within activity BOQ</span>}</div></TableCell>
+    <TableCell><button className="rowlink" onClick={()=>openRecord(r)}><b>{r.item}</b><span>Project {r.project} · M{r.milestone} · Act {r.activity} {r.activityName}{r.kind==='request'?' · Ad hoc':''}{multi?' · Week '+weekLabel(r.window):''}</span></button><div className="plan-status">{qc?.excess?<span className="tag amber">+{qc.excess} {r.unit} over activity BOQ</span>:<span className="tag green">Within activity BOQ</span>}</div></TableCell>
     <TableCell className="nw">{s.qty} {r.unit}</TableCell>
     <TableCell className="nw">{s.boqRate??'—'}</TableCell><TableCell className="nw">{s.targetRate??'—'}</TableCell>
     <TableCell className="nw"><b className={s.aboveBoq?'neg':''}>{s.vendorRate??'—'}</b>{s.aboveBoq?<small className="neg">Above BOQ</small>:s.aboveTarget?<small className="warn">Above target</small>:null}</TableCell>

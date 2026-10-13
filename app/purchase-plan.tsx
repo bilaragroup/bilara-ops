@@ -3,7 +3,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {Checkbox} from '@/components/ui/checkbox';
 import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/components/ui/table';
 import {money} from '@/lib/calculations';
-import {addDays} from '@/lib/weekly';
+import {inPeriod,periodLabel,singleWeek,weekLabel,type Period} from '@/lib/weekly';
 import {lineSaving,planTotals,targetUnitRate} from '@/lib/purchase-plan';
 import CarryForward from './carry-forward';
 
@@ -17,8 +17,9 @@ const editable=(r:any)=>r.stage==='BOQ priced'&&r.closure?.state!=='Closed';
 const fromRecord=(r:any):Edit=>({version:r.version,vendor:r.vendor||'',vendorPhone:r.vendorPhone||'',quoteRate:r.quoteRate===''||r.quoteRate==null?'':String(r.quoteRate),quoteReference:r.quoteReference||'',entity:r.entity||'GROUP'});
 const stageTag=(r:any)=>r.stage==='Audit approved'?<span className="tag green">Audit approved</span>:r.stage==='Vendors finalized'?<span className="tag amber">With Audit</span>:r.stage==='Rejected'?<span className="tag red">Rejected</span>:r.auditReturn?<span className="tag red">Sent back by Audit</span>:<span className="tag">To price</span>;
 
-export default function PurchasePlan({records,project,window,refresh,openRecord}:any){
- const rows=useMemo(()=>records.filter((r:any)=>['plan','request'].includes(r.kind)&&r.window===window&&(project==='all'||r.project===project)&&['BOQ priced','Vendors finalized','Audit approved'].includes(r.stage)).sort((a:any,b:any)=>a.project.localeCompare(b.project)||String(a.item).localeCompare(String(b.item))),[records,project,window]);
+export default function PurchasePlan({records,project,window,period,refresh,openRecord}:any){
+ const per:Period=period||{key:'week',from:window,to:window},multi=!singleWeek(per);
+ const rows=useMemo(()=>records.filter((r:any)=>['plan','request'].includes(r.kind)&&inPeriod(r.window,per)&&(project==='all'||r.project===project)&&['BOQ priced','Vendors finalized','Audit approved'].includes(r.stage)).sort((a:any,b:any)=>String(a.window).localeCompare(String(b.window))||a.project.localeCompare(b.project)||String(a.item).localeCompare(String(b.item))),[records,project,per.from,per.to]);
  const [edits,setEdits]=useState<Record<string,Edit>>({}),[selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[results,setResults]=useState<{ok:number;errors:string[]}|null>(null);
  // Keep unsaved typing for lines that did not change on the server (e.g. after a partial save).
  useEffect(()=>{setEdits(prev=>Object.fromEntries(rows.filter(editable).map((r:any)=>[r.id,prev[r.id]?.version===r.version?prev[r.id]:fromRecord(r)])));setSelected(s=>s.filter(id=>rows.some((r:any)=>r.id===id&&editable(r))));},[rows]);
@@ -43,7 +44,7 @@ export default function PurchasePlan({records,project,window,refresh,openRecord}
  const allSelected=!!toPrice.length&&selected.length===toPrice.length;
  return <section className="purchase-plan">
   <div className="metrics plan-metrics">
-   <div className="metric"><p>Plan value at vendor rates</p><strong>{money(totals.vendor)}</strong><small>{rows.length-totals.missing} of {rows.length} lines priced · week {window} to {addDays(window,6)}</small></div>
+   <div className="metric"><p>Plan value at vendor rates</p><strong>{money(totals.vendor)}</strong><small>{rows.length-totals.missing} of {rows.length} lines priced · {periodLabel(per)}</small></div>
    <div className="metric"><p>Saving against target</p><strong className={totals.savingVsTarget<0?'neg':''}>{money(totals.savingVsTarget)}</strong><small>Target budget {money(totals.target)}</small></div>
    <div className="metric"><p>Lines above target</p><strong>{totals.aboveTarget}</strong><small>Audit will see these flagged</small></div>
    <div className="metric"><p>Progress</p><strong>{approved.length}/{rows.length}</strong><small>{toPrice.length} to price · {withAudit.length} with Audit</small></div>
@@ -57,7 +58,7 @@ export default function PurchasePlan({records,project,window,refresh,openRecord}
     <TableHead>Project / item</TableHead><TableHead>Qty</TableHead><TableHead>Target rate</TableHead><TableHead>Vendor</TableHead><TableHead>Vendor rate</TableHead><TableHead>Quote ref.</TableHead><TableHead>Entity</TableHead><TableHead>Value</TableHead><TableHead>Saving vs target</TableHead>
    </TableRow></TableHeader><TableBody>{rows.map((r:any)=>{const e=edits[r.id],can=editable(r)&&!!e,d=draft(r),s=lineSaving(d);return <TableRow key={r.id} className={s.aboveTarget?'row-warn':''}>
     <TableCell>{can&&<Checkbox aria-label={'Select '+r.item} checked={selected.includes(r.id)} onCheckedChange={(v)=>setSelected(v?[...selected,r.id]:selected.filter(x=>x!==r.id))}/>}</TableCell>
-    <TableCell><button className="rowlink" onClick={()=>openRecord(r)}><b>{r.item}</b><span>Project {r.project} · M{r.milestone} · Act {r.activity} {r.activityName}{r.kind==='request'?' · Ad hoc':''}</span></button><div className="plan-status">{stageTag(r)}{r.reschedule?.from&&<span className="tag">Moved from {r.reschedule.from}</span>}</div>{r.auditReturn&&r.stage==='BOQ priced'&&<small className="audit-note">Audit: {r.auditReturn.note}</small>}</TableCell>
+    <TableCell><button className="rowlink" onClick={()=>openRecord(r)}><b>{r.item}</b><span>Project {r.project} · M{r.milestone} · Act {r.activity} {r.activityName}{r.kind==='request'?' · Ad hoc':''}{multi?' · Week '+weekLabel(r.window):''}</span></button><div className="plan-status">{stageTag(r)}{r.reschedule?.from&&<span className="tag">Moved from {r.reschedule.from}</span>}</div>{r.auditReturn&&r.stage==='BOQ priced'&&<small className="audit-note">Audit: {r.auditReturn.note}</small>}</TableCell>
     <TableCell className="nw">{s.qty} {r.unit}</TableCell>
     <TableCell className="nw">{targetUnitRate(r)??'—'}</TableCell>
     <TableCell>{can?<><input className="plan-input" aria-label="Vendor" placeholder="Vendor" value={e.vendor} maxLength={200} onChange={x=>set(r.id,'vendor',x.target.value)}/><input className="plan-input small" aria-label="Vendor phone" placeholder="Phone" value={e.vendorPhone} maxLength={40} onChange={x=>set(r.id,'vendorPhone',x.target.value)}/></>:<>{r.vendor||'—'}<small>{r.vendorPhone}</small></>}</TableCell>
@@ -68,7 +69,7 @@ export default function PurchasePlan({records,project,window,refresh,openRecord}
     <TableCell className="nw"><span className={s.savingVsTarget==null?'':s.savingVsTarget<0?'neg':'pos'}>{money(s.savingVsTarget)}</span>{s.aboveTarget&&<small className="neg">Above target</small>}</TableCell>
    </TableRow>})}</TableBody></Table></div>}
   </div>
-  <CarryForward records={records} project={project} window={window} refresh={refresh}/>
+  <CarryForward records={records} project={project} window={window} period={per} refresh={refresh}/>
   {results&&<p className={'alert '+(results.errors.length?'amber':'green')} role="status">{results.ok} line{results.ok===1?'':'s'} saved.{results.errors.length?' Not saved: '+results.errors.join(' · '):''}</p>}
  </section>;
 }

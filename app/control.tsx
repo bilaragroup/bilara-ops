@@ -11,6 +11,7 @@ import GMApproval from './gm-approval';
 import ApprovalQueue from './approval-queue';
 import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
+import PeriodPicker from './period-picker';
 import AuditReview from './audit-review';
 import RescheduleRequest from './reschedule-request';
 import { requestPolicy, plannedWindowRoute } from '@/lib/request-policy';
@@ -29,6 +30,11 @@ import {
   planningWindow,
   validWindow,
   recordWindow,
+  makePeriod,
+  inPeriod,
+  singleWeek,
+  weekLabel,
+  type Period,
   stageNames,
   addDays,
 } from '@/lib/weekly';
@@ -347,6 +353,21 @@ export default function Control({ user, testUserSwitch }: any) {
       .catch((e) => setError(String(e)));
   }, []);
   const [window, setWindow] = useState(planningWindow());
+  // Requests, plans, audit and orders are viewed over a period of weeks;
+  // payment forecast, documents and backups stay one week at a time.
+  const [period, setPeriodState] = useState<Period>(() => makePeriod('next4'));
+  const setPeriod = (p: Period) => {
+    setPeriodState(p);
+    const w = singleWeek(p);
+    if (w) setWindow(w);
+    setOffset(0);
+  };
+  const showWeek = (w: string) => {
+    setWindow(w);
+    if (!inPeriod(w, period)) setPeriodState(makePeriod('week', undefined, w));
+  };
+  const weekTab = ['payment', 'backup', 'documents'].includes(tab);
+  const multiWeek = !singleWeek(period);
   const [documents, setDocuments] = useState<any[]>([]);
   const baselineLocked = (d: any) =>
     !!d.id &&
@@ -401,7 +422,9 @@ export default function Control({ user, testUserSwitch }: any) {
     (project === 'all' || r.project === project) &&
     (milestoneFilter === 'all' || String(r.milestone) === milestoneFilter) &&
     (!activityFilter || String(r.activity) === activityFilter.trim()) &&
-    recordWindow(r, records) === window &&
+    (tab === 'payment'
+      ? recordWindow(r, records) === window
+      : inPeriod(recordWindow(r, records), period)) &&
     [
       r.item,
       r.project,
@@ -422,7 +445,15 @@ export default function Control({ user, testUserSwitch }: any) {
         : tab === 'purchase'
           ? buys
           : requests
-  ).filter(matches);
+  )
+    .filter(matches)
+    .sort((a, b) =>
+      multiWeek && tab !== 'payment'
+        ? String(recordWindow(a, records)).localeCompare(
+            String(recordWindow(b, records)),
+          )
+        : 0,
+    );
   const metrics = useMemo(() => {
     const ps = plans.filter(matches),
       bs = buys.filter(matches),
@@ -444,7 +475,7 @@ export default function Control({ user, testUserSwitch }: any) {
         0,
       ),
     };
-  }, [records, project, query, window]);
+  }, [records, project, query, window, period, tab]);
   const start = (k: string, extra: Any = {}) => {
     if (!canStart(k, extra)) {
       setNotice('Your role has view access here.');
@@ -591,7 +622,7 @@ export default function Control({ user, testUserSwitch }: any) {
       );
       if (draft.kind === 'purchase') setTab('orders');
       if (['plan', 'request'].includes(draft.kind)) {
-        setWindow(draft.window);
+        showWeek(draft.window);
         setTab(draft.kind);
       }
       await refresh();
@@ -647,7 +678,7 @@ export default function Control({ user, testUserSwitch }: any) {
       }
       setDraft(null);
       setNotice(`${draft.lines.length} items saved in one purchase request.`);
-      setWindow(draft.window);
+      showWeek(draft.window);
       setTab('plan');
       await refresh();
     } catch (e) {
@@ -848,6 +879,9 @@ export default function Control({ user, testUserSwitch }: any) {
                           ? ` · M${r.milestone} · A${r.activityRequestCode} ${r.activityName || ''}`
                           : ''}{' '}
                         · {r.unit || r.category}
+                        {multiWeek && tab !== 'payment' && recordWindow(r, records)
+                          ? ` · Week ${weekLabel(String(recordWindow(r, records)))}`
+                          : ''}
                       </span>
                     </button>
                   </TableCell>
@@ -1167,11 +1201,22 @@ export default function Control({ user, testUserSwitch }: any) {
                   </label>
                 </>
               )}
-              <label className="field">
-                <span>Execution week · Thursday</span>
-                <WeekInput value={window} onChange={setWindow} />
-              </label>
-              <span className="context-end">Through {addDays(window, 6)}</span>
+              {weekTab ? (
+                <>
+                  <label className="field">
+                    <span>
+                      {tab === 'payment' ? 'Payment week' : 'Week'} · any day
+                      picks its Thu–Wed week
+                    </span>
+                    <WeekInput value={window} onChange={setWindow} />
+                  </label>
+                  <span className="context-end">
+                    Thu {window} – Wed {addDays(window, 6)}
+                  </span>
+                </>
+              ) : (
+                <PeriodPicker period={period} onChange={setPeriod} />
+              )}
             </div>
           )}{' '}
           <TabsContent value="projects">
@@ -1184,7 +1229,7 @@ export default function Control({ user, testUserSwitch }: any) {
             <SettingsPage settings={settings} onSaved={setSettings} />
           </TabsContent>
           <TabsContent value="orders">
-            <Orders
+            <Orders period={period}
               records={records}
               window={window}
               setWindow={setWindow}
@@ -1197,7 +1242,7 @@ export default function Control({ user, testUserSwitch }: any) {
             />
           </TabsContent>
           <TabsContent value="purchase-plan">
-            <PurchasePlan
+            <PurchasePlan period={period}
               records={records}
               project={project}
               window={window}
@@ -1206,7 +1251,7 @@ export default function Control({ user, testUserSwitch }: any) {
             />
           </TabsContent>
           <TabsContent value="audit">
-            <AuditReview
+            <AuditReview period={period}
               records={records}
               project={project}
               window={window}
@@ -1215,7 +1260,7 @@ export default function Control({ user, testUserSwitch }: any) {
             />
           </TabsContent>
           <TabsContent value="weekly">
-            <Dashboard
+            <Dashboard period={period}
               user={user}
               records={records}
               window={window}
@@ -1252,7 +1297,7 @@ export default function Control({ user, testUserSwitch }: any) {
           {['plan', 'purchase', 'payment', 'request'].map((t) => (
             <TabsContent value={t} key={t}>
               {t === 'plan' && !canPurchase && has(user, 'Project Manager', 'GM') && (
-                <CarryForward
+                <CarryForward period={period}
                   records={records}
                   project={project}
                   window={window}
@@ -1260,7 +1305,7 @@ export default function Control({ user, testUserSwitch }: any) {
                 />
               )}
               {t === 'plan' && (canGM || has(user, 'BOQ Team')) && (
-                <ApprovalQueue
+                <ApprovalQueue period={period}
                   gm={canGM}
                   records={records}
                   project={project}
@@ -1351,12 +1396,12 @@ export default function Control({ user, testUserSwitch }: any) {
                   openOrders={() => changeTab('orders')}
                 />
               )}{' '}
-              {['plan', 'payment'].includes(tab) && (
+              {(tab === 'payment' || (tab === 'plan' && !multiWeek)) && (
                 <PlanOverview
                   records={records}
                   documents={documents}
                   project={project}
-                  window={window}
+                  window={tab === 'plan' ? singleWeek(period)! : window}
                   refresh={refresh}
                 />
               )}
