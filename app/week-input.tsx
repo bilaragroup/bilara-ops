@@ -1,8 +1,19 @@
- 'use client';
+'use client';
 import {useEffect,useState} from 'react';
-import {validWindow} from '@/lib/weekly';
+import {validWindow,thursday} from '@/lib/weekly';
+import {dateValid} from '@/lib/calculations';
+
+// Weeks run Thursday to Wednesday and are stored as their Thursday.
+// Any date can be picked; it snaps to the Thursday that starts its week
+// (e.g. Tuesday 13 Oct → week of Thursday 8 Oct).
 export default function WeekInput({value,onChange,min,readOnly=false,required=false,name}: {value:string;onChange:(value:string)=>void;min?:string;readOnly?:boolean;required?:boolean;name?:string}){
  const [draft,setDraft]=useState(value),[error,setError]=useState('');
  useEffect(()=>{setDraft(value);setError('');},[value]);
- return <><input type="date" name={name} min={min||"1970-01-01"} step={7} readOnly={readOnly} required={required} value={draft} aria-invalid={!!error} onChange={e=>{const next=e.target.value;setDraft(next);if(validWindow(next)&&(!min||next>=min)){onChange(next);setError('');}}} onBlur={e=>{const next=e.currentTarget.value;if(!validWindow(next)||(min&&next<min)){setDraft(value);setError(min?'Choose a Thursday on or after '+min+'. The previous week is still selected.':'Choose a Thursday. The previous week is still selected.');}else{setDraft(next);onChange(next);setError('');}}}/>{error&&<small role="alert">{error}</small>}</>;
+ function apply(picked:string,final:boolean){
+  if(!dateValid(picked)){if(final){setDraft(value);setError('Choose a date. The previous week is still selected.');}return;}
+  const week=validWindow(picked)?picked:thursday(picked);
+  if(min&&week<min){if(final){setDraft(value);setError('Choose a week starting on or after '+min+'. The previous week is still selected.');}return;}
+  setDraft(week);setError('');if(week!==value)onChange(week);
+ }
+ return <><input type="date" name={name} min={min?thursday(min):undefined} readOnly={readOnly} required={required} value={draft} aria-invalid={!!error} title="Any date picks its Thursday-to-Wednesday week" onChange={e=>{setDraft(e.target.value);apply(e.target.value,false);}} onBlur={e=>apply(e.currentTarget.value,true)}/>{error&&<small role="alert">{error}</small>}</>;
 }
