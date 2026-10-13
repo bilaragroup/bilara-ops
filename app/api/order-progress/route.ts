@@ -11,7 +11,7 @@ async function handlePOST(req:Request,a:Actor){try{
  if(!Array.isArray(b.items)||!b.items.length||b.items.length>100||new Set(b.items.map((x:any)=>x.id)).size!==b.items.length)return fail('Select 1–100 different PO items');
  const by=String(b.by||'').trim(),reason=String(b.reason||'').trim();if(!by||by.length>200||!reason||reason.length>2000)return fail('Enter your name and a reason / delivery note');
  if(b.action==='reschedule'&&!dateValid(b.date))return fail('Choose a valid expected delivery date');
- if(b.action==='delivered'&&(!dateValid(b.date)||b.date>indiaToday()||!String(b.grn||'').trim()||String(b.grn).length>200))return fail('Enter an actual delivery date no later than today and a GRN / receipt reference');
+ if(b.action==='delivered')return fail('Record deliveries in Receive goods (GRN) with the quantity received and accepted.');
  const db=database(),snapshot=await db.prepare('SELECT * FROM records ORDER BY id').all(),records=snapshot.results.map(decode);
  const changes:any[]=[];let order:string|undefined;
  for(const input of b.items){
@@ -29,7 +29,7 @@ async function handlePOST(req:Request,a:Actor){try{
    if(!dateValid(data.expectedDelivery))return fail('Delivery date is outside the supported range');
    data.status=data.expectedDelivery>data.originalDelivery?'Delayed':'Ordered';
   }else if(b.action==='delivered'){data.status='Delivered';data.delivery=b.date;data.grn=String(b.grn).trim();}
-  else if(b.action==='pending'){data.status='Not delivered';data.delivery='';data.grn='';}
+  else if(b.action==='pending'){if(Array.isArray(p.receipts)&&p.receipts.length)return fail(p.item+': a GRN is recorded. Goods received cannot be un-received here.');data.status='Not delivered';data.delivery='';data.grn='';}
   else{
    const payments=records.filter(r=>r.kind==='payment'&&r.parent===p.id);
    if(payments.some(r=>r.paid>0))return fail(p.item+': payment has already been recorded. Resolve the advance / refund with Accounts before cancellation.');
@@ -42,7 +42,7 @@ async function handlePOST(req:Request,a:Actor){try{
    const paymentBasis=b.action==='delivered'?data.delivery:data.expectedDelivery;
    if(dateValid(paymentBasis)){
     data.expectedPaymentDate=addDays(paymentBasis,Number(data.creditDays||0));
-    for(const s of records.filter(r=>r.kind==='payment'&&r.parent===p.id&&r.paid===0&&r.status!=='Cancelled')){
+    for(const s of records.filter(r=>r.kind==='payment'&&r.parent===p.id&&r.paid===0&&r.status!=='Cancelled'&&r.basis!=='GRN')){
      const sd=JSON.parse((snapshot.results.find((r:any)=>r.id===s.id) as any).data);
      const next={...sd,due:data.expectedPaymentDate,window:thursday(data.expectedPaymentDate),paymentTiming:{basis:paymentBasis,creditDays:Number(data.creditDays||0),updatedBy:by,updatedAt:new Date().toISOString()}};
      changes.push({old:s,data:next,total:s.total});

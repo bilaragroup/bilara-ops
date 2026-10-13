@@ -46,8 +46,9 @@ async function boqRelease(id,who=P.boq){const r=await get(id);await call('gm-app
 async function quote(id,vendor,rate,ref,send=true){const r=await get(id);await call('records',{id,version:r.version,vendor,vendorPhone:'98470 12345',quoteRate:rate,quoteReference:ref,entity:'GROUP',...(send?{stage:'Vendors finalized'}:{})},P.buy);}
 async function audit(id,decision,note){const r=await get(id);await call('audit-decision',{ids:[id],versions:{[id]:r.version},decision,note,confirmed:true},P.audit);}
 async function order(id,creditDays){const r=await get(id);await call('orders',{orderId:uuid(),items:[{id,version:r.version,qty:r.boqQty}],creditDays,exceptionReason:'Demo data created outside the Wednesday PO day'},P.buy);return (await records()).find(x=>x.kind==='purchase'&&x.parent===id);}
-async function deliver(buy,grn){await call('order-progress',{action:'delivered',items:[{id:buy.id,version:buy.version}],date:today,grn,by:'Demo SE',reason:'Received in full at site'},P.buy);return get(buy.id);}
-async function pay(buy,mode,ref,receipt){const s=(await records()).find(x=>x.kind==='payment'&&x.parent===buy.id);
+async function deliver(buy,grn,se,received,accepted){await call('grn',{action:'receive',grnNo:grn,date:today,challan:'CH-'+grn.slice(-4),vehicle:'KL-07-AB-1234',items:[{id:buy.id,version:buy.version,received:received??buy.qty,accepted:accepted??received??buy.qty,note:received!==accepted?'Some damaged in unloading':''}]},se);return get(buy.id);}
+async function billCheck(buy,billNo,qty,rate,amount){const b=await get(buy.id);await call('bill-check',{id:buy.id,version:b.version,action:'add',billNo,billDate:today,qty,rate,amount},P.acc);return get(buy.id);}
+async function pay(buy,mode,ref,receipt){const s=(await records()).find(x=>x.kind==='payment'&&x.parent===buy.id&&x.basis==='GRN');
  await call('accounts',{batchId:uuid(),paymentMode:mode,date:today,accountsBy:'Demo Accounts',reference:ref,payments:[{id:s.id,version:s.version,amount:(s.total-s.paid)/100}],...(receipt?{receiptId:receipt}:{})},P.acc);}
 
 const steps=[];const done=(label)=>{steps.push(label);console.log('  ✓ '+label);};
@@ -98,35 +99,37 @@ try{
 
  // 8. Delivered with GRN + bill; payment due (on credit), not yet paid.
  const msand=await raise('902','MSand','CFT',500,W,{activityName:'Footing concrete'});await boqPrice(msand,62);await boqRelease(msand);await quote(msand,'Periyar Crushers',57,'PC-2209');
- await audit(msand,'Approved','Approved.');let buy=await order(msand,10);buy=await deliver(buy,'GRN-902-0001');
+ await audit(msand,'Approved','Approved.');let buy=await order(msand,10);buy=await deliver(buy,'GRN-902-0001',P.se2,500,480);
  await upload('Final bill','902',W,'Periyar Crushers',[buy.id],'PC-BILL-5521',P.buy);
- done('Step 6 · Delivered with GRN and bill attached, payment due in 10 days (MSand) — shows in Payment forecast');
+ done('Step 6 · Site engineer GRN: 500 CFT arrived, 480 accepted, 20 rejected (MSand). Payment scheduled for 480 only, due in 10 days; bill waiting for Accounts to check');
 
  // 9. Fully paid and closed.
  const blocks=await raise('901','Solid Cement Blocks 12 x 8 x 6','NOS',1500,W,{activityName:'Basement wall'});await boqPrice(blocks,48);await boqRelease(blocks);await quote(blocks,'Kerala Traders',44,'KT-770');
- await audit(blocks,'Approved','₹4 per block below BOQ. Approved.');buy=await order(blocks,0);buy=await deliver(buy,'GRN-901-0001');
+ await audit(blocks,'Approved','₹4 per block below BOQ. Approved.');buy=await order(blocks,0);buy=await deliver(buy,'GRN-901-0001',P.se1);
+ buy=await billCheck(buy,'KT-BILL-3301',1500,44,66000);
  await upload('Final bill','901',W,'Kerala Traders',[buy.id],'KT-BILL-3301',P.buy);
  const receipt=await upload('Payment receipt','901',W,'Kerala Traders',[buy.id],'UPI-RCPT-8891',P.acc);
  await pay(buy,'UPI','UPI-REF-889120',receipt);
  const b=await get(blocks);await call('closure',{id:blocks,version:b.version,action:'close',reason:'Delivered, billed and paid in full',confirmed:true},P.buy);
- done('Step 7 · Delivered, billed, paid by UPI with receipt and closed (Solid Cement Blocks)');
+ done('Step 7 · GRN by site, bill matched by Accounts, paid by UPI with receipt and closed (Solid Cement Blocks)');
 
  // 10. Rejected by Audit.
  const shut=await raise('901','Shuttering Items','LOT',1,W,{activityName:'Formwork'});await boqPrice(shut,18000);await boqRelease(shut);await quote(shut,'Metro Rentals',23500,'MR-019');
  await audit(shut,'Rejected','Far above BOQ. Use company shuttering stock instead.');
  done('Step 8 · Rejected by Audit (Shuttering Items)');
 
- const pays=(await records()).filter(r=>r.kind==='payment'&&['901','902'].includes(r.project));
- const payWeeks=pays.map(r=>`  ${r.item}: due ${r.due} → Payment forecast week ${r.window}${r.paid>=r.total?' (paid)':''}`).join('\n');
+ const pays=(await records()).filter(r=>r.kind==='payment'&&r.status!=='Cancelled'&&['901','902'].includes(r.project));
+ const payWeeks=pays.map(r=>`  ${r.item}: due ${r.due} → Payment forecast week ${r.window}${r.paid>=r.total?' (paid)':''}${r.basis==='GRN'?' · for goods received':' · forecast for goods still to come'}`).join('\n');
  console.log(`\nPayments:\n${payWeeks}`);
  console.log(`
-Done. Open http://localhost:3000 and set "Execution week" to ${W}.
+Done. Open http://localhost:3000. The Weeks filter shows the next 4 weeks; demo work is in the week of ${W}.
 Use "Testing as" (bottom-left) to switch between the demo people:
   Demo PM (Biju)          → Purchase requests: raise a request
   Demo BOQ (Subha)        → Purchase requests: BOQ release queue at the top
   Demo GM (Sachin)        → Purchase requests: late request (week ${add(W,-7)})
   Demo Purchase (Jithin)  → Purchase plan, Purchase orders
+  Demo SE (Sandeep / Arun)→ Receive goods (GRN)
   Demo Audit (Rijila)     → Audit review: savings, approve / send back
-  Demo Accounts (Gokul)   → Payment forecast: record payment
+  Demo Accounts (Gokul)   → Payment forecast: check bills, record payment
 Demo projects are 901 and 902; your own projects are not touched.`);
 }catch(e){console.error('\nDemo data stopped: '+e.message+'\nSteps completed: '+steps.length);process.exit(1);}

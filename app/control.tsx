@@ -12,6 +12,8 @@ import ApprovalQueue from './approval-queue';
 import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
 import PeriodPicker from './period-picker';
+import ReceiveGoods from './receive-goods';
+import BillCheck from './bill-check';
 import AuditReview from './audit-review';
 import RescheduleRequest from './reschedule-request';
 import { requestPolicy, plannedWindowRoute } from '@/lib/request-policy';
@@ -1082,6 +1084,7 @@ export default function Control({ user, testUserSwitch }: any) {
               ['purchase-plan', 'Purchase plan', Wallet],
               ['audit', 'Audit review', ShieldCheck],
               ['orders', 'Purchase orders', PackageCheck],
+              ['grn', 'Receive goods (GRN)', PackageCheck],
               ['payment', 'Payment forecast', Wallet],
               ['documents', 'Documents', ClipboardList],
               ['backup', 'Backups', Download],
@@ -1094,7 +1097,9 @@ export default function Control({ user, testUserSwitch }: any) {
                   (!['projects', 'users', 'settings'].includes(String(v)) ||
                     has(user)) &&
                   (v !== 'purchase-plan' || canPurchase || canPrivate) &&
-                  (v !== 'audit' || has(user, 'Audit', 'GM')),
+                  (v !== 'audit' || has(user, 'Audit', 'GM')) &&
+                  (v !== 'grn' ||
+                    has(user, 'Site Engineer', 'Project Manager', 'Purchase Manager', 'Purchase Team')),
               )
               .map(([v, label, Icon]: any) => (
                 <TabsTrigger key={v} value={v}>
@@ -1125,6 +1130,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     request: 'Ad hoc requests',
                     'purchase-plan': 'Purchase plan',
                     audit: 'Audit review',
+                    grn: 'Receive goods (GRN)',
                     projects: 'Projects',
                     users: 'Users & roles',
                     settings: 'Settings',
@@ -1248,6 +1254,15 @@ export default function Control({ user, testUserSwitch }: any) {
               window={window}
               refresh={refresh}
               openRecord={setSelected}
+            />
+          </TabsContent>
+          <TabsContent value="grn">
+            <ReceiveGoods
+              records={records}
+              project={project}
+              period={period}
+              refresh={refresh}
+              user={user}
             />
           </TabsContent>
           <TabsContent value="audit">
@@ -1385,6 +1400,15 @@ export default function Control({ user, testUserSwitch }: any) {
                   </>
                 )}
               </div>
+              {tab === 'payment' &&
+                has(user, 'Accounts', 'Purchase Manager', 'Purchase Team', 'GM', 'Audit') && (
+                  <BillCheck
+                    records={records}
+                    project={project}
+                    user={user}
+                    refresh={refresh}
+                  />
+                )}
               {tab === 'payment' && (
                 <ForecastRequests
                   records={records}

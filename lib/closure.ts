@@ -9,6 +9,7 @@ export function closureChecks(r:any,records:any[],documents:any[]){
  for(const p of buys){
   if(p.status!=='Delivered'||!dateValid(p.delivery)||p.delivery>indiaToday()||!p.grn)issues.push(p.item+': delivery and GRN are incomplete.');
   if(!documents.some(d=>d.type==='Final bill'&&d.project===r.project&&String(d.vendor).trim().toLowerCase()===String(p.vendor).trim().toLowerCase()&&d.recordIds?.includes(p.id)))issues.push(p.item+': attach the vendor final bill.');
+  if(Array.isArray(p.receipts)&&p.receipts.length&&!['Matched','Approved'].includes(p.billStatus))issues.push(p.item+': check the vendor bill against the PO and GRN.');
   const payments=records.filter(s=>s.kind==='payment'&&s.parent===p.id);
   if(payments.reduce((n,s)=>n+s.total,0)!==p.total||payments.reduce((n,s)=>n+s.paid,0)!==p.total)issues.push(p.item+': settle the full PO value, including later instalments.');
  }

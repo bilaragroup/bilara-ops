@@ -1,4 +1,5 @@
 import { protect } from '@/lib/access';
+import { paymentBlock } from '@/lib/grn';
 import {
   Actor,
   confidential,
@@ -237,6 +238,11 @@ async function handlePOST(req: Request, a: Actor) {
       const value = cents(amount);
       if (value > old.total - old.paid)
         return fail('Payment exceeds the outstanding balance');
+      {
+        const all = (await db.prepare('SELECT * FROM records').all()).results.map(decode);
+        const blocked = paymentBlock(old, all, value);
+        if (blocked) return fail(blocked);
+      }
       const results = await db.batch([
         db
           .prepare(
@@ -281,6 +287,24 @@ async function handlePOST(req: Request, a: Actor) {
         b.demandQty,
     };
     for (const k of fields[kind]) data[k] = b[k] ?? old?.[k] ?? '';
+    // Delivery is recorded only through Receive goods (GRN) or Purchase orders actions.
+    if (kind === 'purchase') {
+      if (old) {
+        data.status = old.status;
+        data.grn = old.grn || '';
+        data.delivery = old.delivery || '';
+        if (Number(old.acceptedQty || 0) > 0 && Number(data.qty) < Number(old.acceptedQty))
+          return fail('Quantity cannot go below what was already accepted at site.');
+        if (old.shortClose && Number(data.qty) !== Number(old.qty))
+          return fail('This line was closed short. Raise a new PO for more.');
+      } else {
+        data.status = 'Ordered';
+        data.grn = '';
+        data.delivery = '';
+      }
+    }
+    if (kind === 'payment' && old?.basis === 'GRN' && cents(Number(data.amount)) !== old.total)
+      return fail('This payment follows the quantity accepted at site and cannot be edited.');
     if (kind === 'purchase' && old) {
       for (const k of [
         'originalDelivery',
@@ -292,7 +316,7 @@ async function handlePOST(req: Request, a: Actor) {
     }
     if (old?.baselineIssuedBy) data.baselineIssuedBy = old.baselineIssuedBy;
     // Audit decisions are written by /api/audit-decision; keep them on later edits.
-    for (const k of ['auditBy', 'auditSavings', 'auditReturn', 'reschedule', 'carryForwards'])
+    for (const k of ['auditBy', 'auditSavings', 'auditReturn', 'reschedule', 'carryForwards', 'receipts', 'acceptedQty', 'receivedQty', 'rejectedQty', 'orderedTotal', 'originalQty', 'advanceApplied', 'shortClose', 'bills', 'billStatus', 'billSummary', 'billApproval', 'basis', 'grnNo', 'grnAdjustments', 'expectedPaymentDate'])
       if (old?.[k]) data[k] = old[k];
     if (
       has(a, 'GM') &&

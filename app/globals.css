@@ -259,3 +259,17 @@ button.danger{color:#a1312a}
 .icon-btn:disabled{opacity:.35}
 .dark .period-select,.dark .icon-btn{background:var(--card);border-color:var(--border)}.dark .period-label{color:var(--muted-foreground)}
 @media(max-width:650px){.period-label{white-space:normal}}
+
+/* Receive goods and bill check */
+.receive-goods{display:flex;flex-direction:column;gap:14px}
+.grn-card{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.grn-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.grn-head h3{margin:0;font-size:16px}.grn-head small{display:block;color:#6f8291;font-size:12px;margin-top:4px}
+.grn-table{width:100%;border-collapse:collapse;font-size:14px;min-width:820px}.grn-table th{background:#f1f5f8;font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:#577083;text-align:left;padding:8px 10px}.grn-table td{padding:8px 10px;border-top:1px solid #e3ebf0;vertical-align:top}.grn-table td small{display:block;color:#6f8291;font-size:12px;margin-top:3px}
+.grn-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}.grn-form .grn-remarks{grid-column:span 3}
+.short-box{display:flex;gap:6px;margin-top:6px}.grn-done{padding:14px 18px}.grn-done summary{cursor:pointer;font-weight:600;font-size:14px}
+.bill-check{padding:0;overflow:hidden}.bill-row{padding:12px 20px;border-top:1px solid #e3ebf0;display:flex;flex-direction:column;gap:6px}
+.bill-main{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.3fr) minmax(0,1.3fr) auto auto;gap:14px;align-items:center;font-size:14px}.bill-main small{display:block;color:#6f8291;font-size:12px}
+.bill-line{color:#6f8291;font-size:12px}.bill-issues{margin:0;padding-left:18px;color:#a1312a;font-size:13px}
+.bill-approve{display:flex;gap:8px}.bill-form{display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) auto;gap:10px;align-items:end}.bill-empty{padding:0 20px 16px}
+.dark .grn-table th{background:#22333f;color:#c6d7e1}.dark .grn-table td,.dark .bill-row{border-color:var(--border)}.dark .grn-head small,.dark .grn-table td small,.dark .bill-main small,.dark .bill-line{color:var(--muted-foreground)}.dark .bill-issues{color:#ffc0bb}
+@media(max-width:800px){.grn-form,.bill-form{grid-template-columns:1fr 1fr}.grn-form .grn-remarks{grid-column:span 2}.bill-main{grid-template-columns:1fr 1fr}}
