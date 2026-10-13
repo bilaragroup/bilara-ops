@@ -1,0 +1,132 @@
+// Demo data for learning the request → payment workflow on a LOCAL copy.
+//
+//   1. bash setup-local.sh        (once)
+//   2. npm run dev                (leave running)
+//   3. node scripts/seed-demo.mjs (in a second terminal)
+//
+// It only talks to http://localhost and refuses any other address, so it can
+// never touch the live site. It adds demo people (emails end in @demo.test),
+// demo projects 901 and 902, and one item at every stage of the workflow.
+
+const BASE=(process.env.BILARA_URL||'http://localhost:3000').replace(/\/$/,'');
+if(!['localhost','127.0.0.1'].includes(new URL(BASE).hostname)){console.error('Refusing to run: demo data is only for a local copy (http://localhost).');process.exit(1);}
+const ADMIN='seedy@sites.test';
+
+async function call(route,body,email=ADMIN,form){
+ const headers={'x-bilara-test-user-email':email,'x-bilara-test-user-id':email};if(!form)headers['content-type']='application/json';
+ let res;try{res=await fetch(BASE+'/api/'+route,{method:body||form?'POST':'GET',headers,body:form||(body?JSON.stringify(body):undefined)});}
+ catch{console.error(`\nCannot reach ${BASE}. Start the app first with: npm run dev`);process.exit(1);}
+ const data=await res.json().catch(()=>({}));if(!res.ok)throw Error(`${route}: ${data.error||res.status}`);return data;
+}
+const records=async()=>(await call('records')).records;
+const get=async id=>(await records()).find(r=>r.id===id);
+const uuid=()=>crypto.randomUUID();
+const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+const add=(s,n)=>{const x=new Date(s+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};
+const thursday=s=>{const d=new Date(s+'T00:00:00Z');return add(s,-((d.getUTCDay()+3)%7));};
+// Next standard planned week: first Thursday whose cut-off (12 days before, 9 a.m. IST) is still ahead.
+let W=add(thursday(today),7);while(new Date(add(W,-12)+'T09:00:00+05:30')<=new Date())W=add(W,7);
+
+const P={pm:'pm@demo.test',boq:'boq@demo.test',buy:'purchase@demo.test',audit:'audit@demo.test',gm:'gm@demo.test',acc:'accounts@demo.test',se1:'se1@demo.test',se2:'se2@demo.test',qc:'qc@demo.test'};
+const people=[[P.pm,'Demo PM (Biju)',['Project Manager']],[P.boq,'Demo BOQ (Subha)',['BOQ Team']],[P.buy,'Demo Purchase (Jithin)',['Purchase Manager']],[P.audit,'Demo Audit (Rijila)',['Audit']],[P.gm,'Demo GM (Sachin)',['GM']],[P.acc,'Demo Accounts (Gokul)',['Accounts']],[P.se1,'Demo SE (Sandeep)',['Site Engineer']],[P.se2,'Demo SE (Arun)',['Site Engineer']],[P.qc,'Demo QC (Anu)',['QC']]];
+
+const PDF=new TextEncoder().encode('%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n');
+async function upload(type,project,window,vendor,recordIds,reference,email){
+ const form=new FormData();form.append('file',new File([PDF],reference+'.pdf',{type:'application/pdf'}));
+ form.append('metadata',JSON.stringify({project,window,type,vendor,uploadedBy:'Demo data',reference,recordIds}));
+ return (await call('documents',null,email,form)).id;
+}
+
+// ---- workflow steps, each performed by the role that does it in real life ----
+let seq=0;
+async function raise(project,item,unit,qty,window=W,extra={}){seq++;
+ return (await call('records',{kind:'plan',project,item,unit,milestone:extra.milestone||'1',activity:String(extra.activity||seq),activityName:extra.activityName||'Foundation',activityBoqQty:qty,boqQty:qty,owner:'Jithin',itemCategory:'Materials',window,due:window,requestBatchId:'demo-'+seq,notes:extra.notes||''},P.pm)).id;}
+async function boqPrice(id,rate){const r=await get(id);await call('records',{id,version:r.version,boqOriginalRate:rate,targetDiscountPercent:5,boqOwner:'Subha'},P.boq);}
+async function boqRelease(id,who=P.boq){const r=await get(id);await call('gm-approval',{ids:[id],versions:{[id]:r.version},decision:'Approved',note:'Within the activity BOQ quantity',confirmed:true},who);}
+async function quote(id,vendor,rate,ref,send=true){const r=await get(id);await call('records',{id,version:r.version,vendor,vendorPhone:'98470 12345',quoteRate:rate,quoteReference:ref,entity:'GROUP',...(send?{stage:'Vendors finalized'}:{})},P.buy);}
+async function audit(id,decision,note){const r=await get(id);await call('audit-decision',{ids:[id],versions:{[id]:r.version},decision,note,confirmed:true},P.audit);}
+async function order(id,creditDays){const r=await get(id);await call('orders',{orderId:uuid(),items:[{id,version:r.version,qty:r.boqQty}],creditDays,exceptionReason:'Demo data created outside the Wednesday PO day'},P.buy);return (await records()).find(x=>x.kind==='purchase'&&x.parent===id);}
+async function deliver(buy,grn){await call('order-progress',{action:'delivered',items:[{id:buy.id,version:buy.version}],date:today,grn,by:'Demo SE',reason:'Received in full at site'},P.buy);return get(buy.id);}
+async function pay(buy,mode,ref,receipt){const s=(await records()).find(x=>x.kind==='payment'&&x.parent===buy.id);
+ await call('accounts',{batchId:uuid(),paymentMode:mode,date:today,accountsBy:'Demo Accounts',reference:ref,payments:[{id:s.id,version:s.version,amount:(s.total-s.paid)/100}],...(receipt?{receiptId:receipt}:{})},P.acc);}
+
+const steps=[];const done=(label)=>{steps.push(label);console.log('  ✓ '+label);};
+try{
+ const existing=(await call('projects')).projects||[];
+ if(existing.some(p=>['901','902'].includes(p.project))&&(await records()).some(r=>['901','902'].includes(r.project))){console.log('Demo data is already loaded (projects 901 and 902). Open http://localhost:3000 and pick week '+W+'.');process.exit(0);}
+ console.log(`Loading demo data into ${BASE} for the execution week starting Thursday ${W}…`);
+ const users=(await call('users')).users||[];
+ for(const [email,name,roles] of people)if(!users.some(u=>u.email===email))await call('users',{email,name,roles,projects:[],active:1,version:0});
+ const ver=p=>existing.find(x=>x.project===p)?.version||0;
+ await call('projects',{project:'901',name:'Demo – Kakkanad Villa',site:'Kakkanad',managerEmail:P.pm,qcEmail:P.qc,engineerEmails:[P.se1],active:1,version:ver('901')});
+ await call('projects',{project:'902',name:'Demo – Aluva House',site:'Aluva',managerEmail:P.pm,qcEmail:'',engineerEmails:[P.se2],active:1,version:ver('902')});
+ done('People (PM, BOQ, Purchase, Audit, GM, Accounts, 2 site engineers, QC) and projects 901 / 902');
+
+ // 1. Just raised by the PM — waiting for the BOQ team.
+ await raise('901','Laterite Stone','NOS',2000,W,{activityName:'Basement wall'});
+ await raise('902','Red Bricks','NOS',3000,add(W,7),{activityName:'Ground floor walls'});
+ done('Step 1 · PM requests waiting for BOQ check (Laterite Stone; Red Bricks for the following week)');
+
+ // 2. Late request (inside the cut-off) — needs the GM.
+ const late=await raise('902','Hitachi','HOUR',16,add(W,-7),{activityName:'Excavation',notes:'Raised after the Saturday cut-off'});
+ await boqPrice(late,1400);
+ done('Step 1b · Late request waiting for GM approval (Hitachi, week '+add(W,-7)+')');
+
+ // 3. BOQ approved — waiting for Purchase to enter vendor rates.
+ const psand=await raise('901','PSand','CFT',400,W,{activityName:'Plastering prep'});await boqPrice(psand,64);await boqRelease(psand);
+ done('Step 2 · BOQ approved, waiting for Purchase rates (PSand)');
+
+ // 4. With Audit — one below BOQ, one above.
+ const metal=await raise('901','20 mm Metal','CFT',300,W,{activityName:'Footing concrete'});await boqPrice(metal,52);await boqRelease(metal);await quote(metal,'Periyar Crushers',48,'PC-2211');
+ const steel=await raise('902','12 mm Steel','KG',900,W,{activityName:'Column reinforcement'});await boqPrice(steel,78);await boqRelease(steel);await quote(steel,'Sree Steels',81,'SS-4410');
+ done('Step 3 · Purchase plan sent to Audit (20 mm Metal below BOQ; 12 mm Steel above BOQ, flagged red)');
+
+ // 5. Sent back by Audit for a better rate.
+ const steel16=await raise('902','16 mm Steel','KG',600,W,{activityName:'Beam reinforcement'});await boqPrice(steel16,77);await boqRelease(steel16);await quote(steel16,'Sree Steels',80,'SS-4411');
+ await audit(steel16,'Returned','Above BOQ rate of 77. Negotiate and resend.');
+ done('Step 3b · Line sent back to Purchase by Audit (16 mm Steel)');
+
+ // 6. Audit approved — ready for a PO.
+ const gum=await raise('901','Tile Gum','KG',250,W,{activityName:'Flooring'});await boqPrice(gum,28);await boqRelease(gum);await quote(gum,'Kerala Traders',26,'KT-778');
+ await audit(gum,'Approved','Below BOQ. Approved.');
+ done('Step 4 · Audit approved, ready for purchase order (Tile Gum)');
+
+ // 7. PO issued, not yet delivered.
+ const cement=await raise('901','Cement','BAG',120,W,{activityName:'Footing concrete'});await boqPrice(cement,350);await boqRelease(cement);await quote(cement,'Kerala Traders',320,'KT-775');
+ await audit(cement,'Approved','Saving ₹30 per bag. Approved.');await order(cement,7);
+ done('Step 5 · Purchase order issued, waiting for delivery (Cement, 7 days credit)');
+
+ // 8. Delivered with GRN + bill; payment due (on credit), not yet paid.
+ const msand=await raise('902','MSand','CFT',500,W,{activityName:'Footing concrete'});await boqPrice(msand,62);await boqRelease(msand);await quote(msand,'Periyar Crushers',57,'PC-2209');
+ await audit(msand,'Approved','Approved.');let buy=await order(msand,10);buy=await deliver(buy,'GRN-902-0001');
+ await upload('Final bill','902',W,'Periyar Crushers',[buy.id],'PC-BILL-5521',P.buy);
+ done('Step 6 · Delivered with GRN and bill attached, payment due in 10 days (MSand) — shows in Payment forecast');
+
+ // 9. Fully paid and closed.
+ const blocks=await raise('901','Solid Cement Blocks 12 x 8 x 6','NOS',1500,W,{activityName:'Basement wall'});await boqPrice(blocks,48);await boqRelease(blocks);await quote(blocks,'Kerala Traders',44,'KT-770');
+ await audit(blocks,'Approved','₹4 per block below BOQ. Approved.');buy=await order(blocks,0);buy=await deliver(buy,'GRN-901-0001');
+ await upload('Final bill','901',W,'Kerala Traders',[buy.id],'KT-BILL-3301',P.buy);
+ const receipt=await upload('Payment receipt','901',W,'Kerala Traders',[buy.id],'UPI-RCPT-8891',P.acc);
+ await pay(buy,'UPI','UPI-REF-889120',receipt);
+ const b=await get(blocks);await call('closure',{id:blocks,version:b.version,action:'close',reason:'Delivered, billed and paid in full',confirmed:true},P.buy);
+ done('Step 7 · Delivered, billed, paid by UPI with receipt and closed (Solid Cement Blocks)');
+
+ // 10. Rejected by Audit.
+ const shut=await raise('901','Shuttering Items','LOT',1,W,{activityName:'Formwork'});await boqPrice(shut,18000);await boqRelease(shut);await quote(shut,'Metro Rentals',23500,'MR-019');
+ await audit(shut,'Rejected','Far above BOQ. Use company shuttering stock instead.');
+ done('Step 8 · Rejected by Audit (Shuttering Items)');
+
+ const pays=(await records()).filter(r=>r.kind==='payment'&&['901','902'].includes(r.project));
+ const payWeeks=pays.map(r=>`  ${r.item}: due ${r.due} → Payment forecast week ${r.window}${r.paid>=r.total?' (paid)':''}`).join('\n');
+ console.log(`\nPayments:\n${payWeeks}`);
+ console.log(`
+Done. Open http://localhost:3000 and set "Execution week" to ${W}.
+Use "Testing as" (bottom-left) to switch between the demo people:
+  Demo PM (Biju)          → Purchase requests: raise a request
+  Demo BOQ (Subha)        → Purchase requests: BOQ release queue at the top
+  Demo GM (Sachin)        → Purchase requests: late request (week ${add(W,-7)})
+  Demo Purchase (Jithin)  → Purchase plan, Purchase orders
+  Demo Audit (Rijila)     → Audit review: savings, approve / send back
+  Demo Accounts (Gokul)   → Payment forecast: record payment
+Demo projects are 901 and 902; your own projects are not touched.`);
+}catch(e){console.error('\nDemo data stopped: '+e.message+'\nSteps completed: '+steps.length);process.exit(1);}
