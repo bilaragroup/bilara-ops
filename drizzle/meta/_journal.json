@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788787562620,
+      "tag": "0000_bizarre_epoch",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788788159510,
+      "tag": "0001_payment_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788869720256,
+      "tag": "0002_cool_hobgoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788935243038,
+      "tag": "0003_familiar_solo",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788935300021,
+      "tag": "0004_round_vision",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789137498137,
+      "tag": "0005_wandering_purple_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789197831983,
+      "tag": "0006_hard_kronos",
+      "breakpoints": true
+    }
+  ]
+}

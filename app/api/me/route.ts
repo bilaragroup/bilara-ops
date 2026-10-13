@@ -1,0 +1,2 @@
+import {actor,AccessError} from '@/lib/access';
+export async function GET(req:Request){try{return Response.json({user:await actor(req.headers,new URL(req.url).hostname==='localhost'&&req.headers.get('x-bilara-test-strict')!=='1')},{headers:{'Cache-Control':'no-store'}});}catch(e){return Response.json({error:e instanceof AccessError?e.message:'Sign-in is unavailable.'},{status:e instanceof AccessError?e.status:503});}}

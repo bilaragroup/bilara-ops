@@ -1,0 +1,9 @@
+'use client';
+import Closure from './closure';
+import {linkedPlanItems} from '@/lib/orders';
+import {money} from '@/lib/calculations';
+export default function PlanOverview({records,documents,project,window,refresh}:any){
+ if(project==='all')return null;
+ const items=linkedPlanItems(records,project,window);
+ return <details className="panel"><summary>Project {project} · Complete weekly plan · {items.length} items · {items.length>0&&items.every((r:any)=>r.closure?.state==='Closed')?'Closed':'Open'}</summary><p className="muted">All planned and ad hoc items for the week starting {window}. Expand an item to follow its linked records.</p>{items.map((r:any)=>{const ids=[r.id,...r.purchases.map((p:any)=>p.id),...r.payments.map((p:any)=>p.id)];const docs=documents.filter((d:any)=>d.recordIds.some((id:string)=>ids.includes(id)));return <details className="plan-linked-item" key={r.id}><summary>{r.item} · {r.kind==='request'?'Ad hoc · ':''}{r.closure?.state==='Closed'?'Closed':r.stage}</summary><p>{r.ordered} / {r.boqQty||r.qty||r.demandQty} {r.unit} ordered · Order value {money(r.committed)} · Paid {money(r.paid)}</p><div className="order-actions">{r.purchases.map((p:any)=><a key={p.id} className="textbutton" href={'/purchase-order?id='+p.id} target="_blank" rel="noreferrer">{p.po} · {p.vendor} ↗</a>)}</div>{r.payments.map((p:any)=><p key={p.id}>Payment due {p.due}: {money(p.total)} · {p.status==='Cancelled'?'Cancelled':p.paid===p.total?'Paid':p.paid?'Part paid':'Unpaid'}</p>)}{docs.map((d:any)=><p key={d.id}><a className="textbutton" href={'/api/documents?id='+d.id}>{d.type}: {d.reference} · {d.filename} ↓</a></p>)}<Closure request={r} records={records} documents={documents} refresh={refresh}/>{!docs.length&&<p className="muted">No documents attached yet.</p>}</details>})}{!items.length&&<p className="muted">Add or upload requests to start this weekly plan.</p>}</details>;
+}

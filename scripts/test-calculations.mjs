@@ -1,0 +1,12 @@
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
+import assert from 'node:assert/strict';
+const compiled=ts.transpileModule(readFileSync('lib/calculations.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
+const {purchaseCost,planMetrics,dateValid,cents}=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
+assert.equal(cents('200'),20000);
+assert.deepEqual(purchaseCost({qty:40,rate:350,discount:100,freight:200,other:0,nonRecoverableTax:50,recoverableTax:500}),{base:1400000,net:1390000,cost:1415000,cash:1465000});
+const m=planMetrics({id:'1',kind:'plan',boqQty:150,boqRate:79},[{parent:'1',qty:140,rate:81.8}]);
+assert.equal(m.budget,1185000);assert.equal(m.cost,1145200);assert.equal(m.rateVariance,39200);assert.equal(m.quantityVariance,-79000);assert.equal(m.cost-m.budget,-39800);
+assert.equal(planMetrics({id:'2',kind:'request',qty:10},[]).budget,null);
+assert.equal(dateValid('2026-02-31'),false);assert.equal(dateValid('2026-09-07'),true);
+console.log('PASS: currency strings, cost vs cash, workbook P.SAND example, rate/quantity reconciliation, ad hoc baseline exclusion, invalid calendar dates.');

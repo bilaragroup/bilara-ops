@@ -1,0 +1,83 @@
+# Bilara Purchase & Payment Control
+
+Private owner workspace built from the supplied FY 2026–27 workbooks.
+
+## Included
+
+- Original source row explorer, 26 purchase sheets and 24 payment sheets, with preserved values, hyperlinks, sheet names and Excel row references.
+- Review-to-activate purchase requirements and standalone payment schedules. Historical source rows do not silently enter live totals.
+- Frozen BOQ quantity, unit rate and identity; editable operational delivery date, owner and notes.
+- Multiple PO purchases per requirement, separate quantity/rate variance, discount, freight, other costs, recoverable and non-recoverable tax.
+- Ad hoc request creation and owner review, with approval required before purchase entry.
+- Purchase-linked and standalone payment schedules, partial payment events, due-date forecast, overpayment and over-scheduling protection.
+- Persistent database, optimistic version checks, atomic writes, audit snapshots and CSV exports.
+
+## Boundaries and rollout
+
+The site is owner-private. Department users, enforced independent maker/checker identities and organization role permissions are not configured. Owner review is a recorded decision, not an independent approval control. Agree the BOQ authority, unit conventions, tax treatment and approval roles before wider team rollout.
+
+Source matching flags are warnings, not automatic deduplication. Review repeat weekly lines before activation. Original dates are displayed as stored; activation requires an explicit date. Source prices with text or units require manual confirmation. Imported payment schedules begin unpaid; record verified historical payments with their actual date and reference. Source documents behind hyperlinks were not downloaded or verified.
+
+The app stores document references, not uploaded files. No banking execution or accounting synchronization is performed. Actual purchase cost represents procurement entries; it is not consumed material cost or a full project profit calculation. No tax rates are prescribed.
+
+## Validation
+
+`npm run build` builds the Worker and client. `npx tsc --noEmit` checks application types. `node scripts/test-calculations.mjs` independently checks monetary formulas. `node scripts/test-api.mjs` runs write tests against the local server, and must only run with a disposable local database. It creates project 998 verification records. No test records are included in production.
+
+Database migrations are in `drizzle/`; production applies them through Sites. `0001_payment_controls.sql` adds an expression index for duplicate POs; atomic conditional database writes enforce schedule limits. The forecast snapshot table is added by the 0002 migration.
+
+Source extraction and analysis scripts require the bundled Python runtime and openpyxl for read-only extraction. `data/chunks` contains the deployment source snapshot; do not expose it as static public assets.
+
+
+
+## Thursday-to-Wednesday planning cycle
+
+The main view is a one-week, project-based cash forecast. Thursday PM submission is for the following Thursday start. Deadlines are BOQ pricing Friday, vendor finalization Monday, audit approval Tuesday, PO and forecast creation Wednesday. Actual purchase and delivery dates are separate from the assigned execution window. Project codes are integers from 100 through 999.
+
+Requirements progress Submitted -> BOQ priced -> Vendors finalized -> Audit approved (or Rejected). Priced BOQ values and audited commercial terms are frozen. Creating an early or late PO, or recording an actual rate different from the audited quote, requires an exception reason. PO identifiers can be generated automatically. Combined PO quantities may not exceed the audited quantity.
+
+Finalization is project-specific and checks audit completion, PO coverage, and either a payment schedule for the week or explicit credit terms. Early/late finalization requires a reason. Each finalization saves an immutable snapshot; later changes need another finalized version. Legacy records without a window are displayed using the week containing their planned date and must be reviewed before finalization.
+
+Finalization starts a ZIP download with the familiar purchase and payment columns in separate XLSX files, plus full operational JSON and audit data. Editable amount and balance formulas and project summaries support offline continuity. Manual downloads are also available. Save these files to a location outside the app before an outage. There is no unattended external backup destination, and JSON restore / offline spreadsheet re-import is not automated. Snapshots currently have a 1.5 MB limit and report a clear error rather than silently truncating data.
+
+`node scripts/test-weekly.mjs` (also invoked by test-api.mjs) verifies the calendar, review stages, PO generation, payment windows, immutable snapshots and Excel backup against a disposable local database. It creates project 998 test records; its generated cleanup SQL removes their exact UUIDs. It must never run against production. The 0002 migration adds the forecast snapshot table.
+
+
+## Simple workflow and Excel upload
+The main navigation is This week, Purchase requests and Payments. Preparation can move directly from Submitted to Vendors finalized once BOQ and vendor fields are complete; audit approval remains a separate action. Existing intermediate BOQ records remain compatible.
+Templates & bulk upload downloads blank request/payment templates or existing rows with IDs. XLSX uploads (up to 500 rows, 5 MB) are parsed locally, reject formulas and possible duplicates, validate dates and project numbers, and run server validation before explicit saving. Rows save sequentially through the existing audited record API; a failure stops the upload and reports saved rows. This is not an all-or-nothing batch. Uploads preserve workflow stages and do not settle payments. Use IDs for updates; blank optional cells preserve existing fields. Backup workbooks remain separate from import templates.
+Validation: TypeScript, production build, scripts/test-imports.mjs and scripts/test-weekly.mjs. No browser interaction testing performed.
+
+## Purchase orders and Bilara branding
+Purchase orders has a dedicated tab listing approved quantities still to order and created POs. Vendor/rate are prefilled from the audited request; saving generates the existing automatic PO number. View / print opens an A4 print layout with the supplied Bilara logo, buyer/supplier fields, delivery address, item, charges, terms and signature spaces. Browser printing supports Save as PDF. Unknown legal details are blank placeholders; no signatures or external sending are automated. Approved items for the same project, execution week and vendor can be selected into one multi-line PO. Each line retains its request parent; a durable orderId links the lines. Legacy single-line POs remain separate. The printable view reflects current saved values, with per-item required dates and quote references. Shared header details are fixed at creation; quantities, item charges and delivery can be updated within existing controls. Additional company fields remain in the full JSON backup and audit history.
+Forms group optional cost, company and delivery details. Planned and ad hoc requirements appear together in Purchase requests. Header wording follows the supplied marked screenshot.
+Validation: TypeScript, production build, local HTTP checks for app/PO/logo, existing workflow and upload regression scripts, and persistence assertions for the new PO fields. Browser interaction and print rendering have not been tested.
+
+## Dashboard and themes
+Dashboard now contains only week/project filters, cash needed, actual approval queue count, paid totals and a concise project summary. Requests, POs, payment forecasts and backups are separate tabs. Template upload is available within Requests and Payment forecast; forecast finalization is expandable within Payment forecast. Workbook reference controls remain secondary. The header theme toggle defaults to the device preference and saves an explicit light/dark selection locally, with graceful fallback when storage is unavailable. Both supplied logo variants are used. PO paper remains light for printing.
+Validation: TypeScript and production build, local route HTTP check. No browser interaction testing performed.
+
+## Shared documents and accounts payments
+Documents supports one PDF/PNG/JPG upload (up to 10 MB) linked to 1–100 records in one project/week. Estimates link requirements, final bills link purchases, receipts link payment schedules. Bills/receipts enforce a common vendor. Files persist in R2; metadata and per-item linkage history persist in D1. Item details display documents linked directly or through related records. Downloads use attachment headers and remain behind the private site gate.
+Accounts can allocate one vendor transaction across up to 50 schedules. Amount, actual date, bank reference, entered accounts name and optional shared receipt are retained per payment event. Partial/full paid status follows recorded amounts. Atomic version guards and idempotency prevent duplicate or concurrent overpayment. Team member names are recorded declarations, not separate departmental authentication; the app remains owner-private.
+Backups include document metadata, payment batches and audit data, with selected-project/week document files inside the ZIP (100 MB per export cap; larger selections must be split). No automatic document extraction/OCR or invoice reconciliation is claimed. No external automatic backup destination or restore is configured.
+
+## Expanded verification (2026-09-09)
+- TypeScript, production build, existing weekly and Excel import regressions passed.
+- New shared-document/accounts tests passed: wrong vendor/project rejection, file signature checks, download byte equality, partial/full payment, overpayment prevention, idempotent retry, concurrent payment conflict, and document-inclusive ZIP.
+- Local browser flow passed: request creation, BOQ/vendor preparation, audit approval, automatic PO creation, printable PO display, payment schedule creation, estimate and receipt uploads, receipt selection, accounts confirmation, Paid status and zero outstanding balance.
+- Browser alignment inspected at desktop, tablet and mobile widths in both themes; no page-level horizontal overflow at tested widths. Theme persisted across reload. Upload modal buttons align to a common baseline. Financial-year badge removed.
+- Browser testing discovered and fixed workflow dropdown resetting caused by changing its option list after selection. Final selection now remains stable and saves correctly.
+- Browser console reported no errors during tested accounts flow. Tests use only local fixtures; production financial records are not altered. This is functional/responsive regression testing, not an exhaustive penetration or large-scale load test. Physical printer/PDF pagination has not been verified.
+
+### Linked weekly plans and grouped orders
+The complete weekly plan in Purchase requests links planned and ad hoc items to their orders, payment schedules, payment status and shared documents. Grouped order creation is all-or-nothing with current quantity/version checks and idempotent retries. No extra financial totals are stored for the order header, preventing double counting. Existing Excel and JSON backups retain the item records and their shared order linkage. Run `node scripts/test-orders.mjs` for grouped order validation and concurrency checks.
+
+### Request upload and automatic forecast drafts
+New request templates omit Vendor, Vendor rate and Quote reference. Existing update exports retain their preparation fields and older templates remain accepted. Purchase-team vendor phone is saved on the requirement and copied into new POs. Payment forecast derives draft rows directly from active requests, showing pending rates, estimated unordered quantities and unscheduled PO balances. Confirmed schedules in any credit week are deducted once; drafts do not count as confirmed cash or paid amounts. Run `node scripts/test-forecast-requests.mjs` for these calculations.
+
+### Mandatory request closure
+Both planned and ad hoc requests can close only after audit approval, delivery/GRN completion, final bill attachment for each purchase line, and payment schedules plus actual settlements equal the full purchase value across all weeks. Accounts must attest final settlement and no unresolved delivery/billing issues. Audit can approve cancellation of the unordered quantity with a recorded reason. Closed requests and their linked purchase/payment records cannot change until reopened with a reason. Closure/reopening/cancellation preserve audit history; weekly plan status derives from every item's closure. Department names remain declared identities in this owner-private app, not separately authenticated roles. Run `node scripts/test-closure.mjs`.
+
+### Drive documents, entities and payment modes
+Documents can retain an HTTPS Google Drive/Docs link instead of R2 file bytes; links keep existing Drive permissions and are not fetched or copied. ZIP backups store a text link and metadata, not an offline copy of Drive content. File uploads remain available. Group and Builders are the only new purchasing entities; grouped POs and actual payment batches cannot mix entities. New actual settlements require Cash, UPI or Account Transfer; mode is recorded in history, batch data and Excel payment backup. Legacy payment events show Not recorded. Run `node scripts/test-options.mjs`.
