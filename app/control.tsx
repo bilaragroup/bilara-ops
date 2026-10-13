@@ -191,9 +191,30 @@ function ProjectField({ draft, set, projects, readOnly = false }: any) {
     />
   );
 }
-function ItemPicker({ item, itemChoice, onChange, readOnly = false }: any) {
+// The item list follows the chosen category; picking an item sets its category and unit.
+const itemsFor = (category?: string) =>
+  RATE_CARD_ITEMS.filter(
+    (v) => !category || RATE_CARD_ITEM_DEFAULTS[v]?.itemCategory === category,
+  );
+function categoryChange(row: any, category: string) {
+  const standard = (RATE_CARD_ITEMS as readonly string[]).includes(row.item);
+  const clash =
+    standard && RATE_CARD_ITEM_DEFAULTS[row.item]?.itemCategory !== category;
+  return {
+    itemCategory: category,
+    ...(clash ? { item: '', itemChoice: '', unit: '' } : {}),
+  };
+}
+function ItemPicker({
+  item,
+  itemChoice,
+  onChange,
+  readOnly = false,
+  category,
+}: any) {
   const standard = (RATE_CARD_ITEMS as readonly string[]).includes(item),
-    choice = standard ? item : itemChoice || (item ? '__other' : '');
+    choice = standard ? item : itemChoice || (item ? '__other' : ''),
+    options = itemsFor(category);
   return (
     <>
       <label className="field">
@@ -210,8 +231,12 @@ function ItemPicker({ item, itemChoice, onChange, readOnly = false }: any) {
             });
           }}
         >
-          <option value="">Choose item</option>
-          {RATE_CARD_ITEMS.map((value) => (
+          <option value="">
+            {category && !options.length
+              ? `No standard ${category.toLowerCase()} · choose Other item`
+              : 'Choose item'}
+          </option>
+          {options.map((value) => (
             <option key={value} value={value}>
               {value}
             </option>
@@ -1866,6 +1891,28 @@ export default function Control({ user, testUserSwitch }: any) {
                         draft={draft}
                         set={setDraft}
                       />
+                      {draft.kind !== 'payment' && (
+                        <>
+                          <label className="field">
+                            <span>Item Category *</span>
+                            <Choice
+                              label="Item Category"
+                              value={draft.itemCategory || ''}
+                              onChange={(v: string) =>
+                                setDraft({ ...draft, ...categoryChange(draft, v) })
+                              }
+                              options={[
+                                ...new Set([
+                                  ...settings.values.itemCategories,
+                                  ...(draft.id && draft.itemCategory
+                                    ? [draft.itemCategory]
+                                    : []),
+                                ]),
+                              ].map((v) => [v, v])}
+                            />
+                          </label>
+                        </>
+                      )}
                       {draft.kind === 'payment' ? (
                         <Field
                           name="item"
@@ -1878,11 +1925,16 @@ export default function Control({ user, testUserSwitch }: any) {
                         <ItemPicker
                           item={draft.item}
                           itemChoice={draft.itemChoice}
+                          category={draft.itemCategory}
                           readOnly={
                             draft.kind === 'plan' && !!baselineLocked(draft)
                           }
                           onChange={(values: any) =>
-                            setDraft({ ...draft, ...values })
+                            setDraft({
+                              ...draft,
+                              ...values,
+                              ...(RATE_CARD_ITEM_DEFAULTS[values.item] || {}),
+                            })
                           }
                         />
                       )}
@@ -1910,24 +1962,6 @@ export default function Control({ user, testUserSwitch }: any) {
                             ...new Set([
                               ...settings.values.owners,
                               ...(draft.id && draft.owner ? [draft.owner] : []),
-                            ]),
-                          ].map((v) => [v, v])}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>Item Category *</span>
-                        <Choice
-                          label="Item Category"
-                          value={draft.itemCategory || ''}
-                          onChange={(v: string) =>
-                            setDraft({ ...draft, itemCategory: v })
-                          }
-                          options={[
-                            ...new Set([
-                              ...settings.values.itemCategories,
-                              ...(draft.id && draft.itemCategory
-                                ? [draft.itemCategory]
-                                : []),
                             ]),
                           ].map((v) => [v, v])}
                         />
@@ -2742,9 +2776,28 @@ function MultiItemRequest({
                 )}
               </div>
               <div className="formgrid">
+                <label className="field">
+                  <span>Category *</span>
+                  <select
+                    required
+                    value={line.itemCategory}
+                    onChange={(e) => {
+                      const lines = draft.lines.map((l: any, n: number) =>
+                        n === i ? { ...l, ...categoryChange(l, e.target.value) } : l,
+                      );
+                      setDraft({ ...draft, lines });
+                    }}
+                  >
+                    <option value="">Choose category</option>
+                    {settings.itemCategories.map((v: string) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </label>
                 <ItemPicker
                   item={line.item}
                   itemChoice={line.itemChoice}
+                  category={line.itemCategory}
                   onChange={(values: any) => {
                     const defaults = RATE_CARD_ITEM_DEFAULTS[values.item] || {};
                     const lines = draft.lines.map((l: any, n: number) =>
@@ -2753,19 +2806,6 @@ function MultiItemRequest({
                     setDraft({ ...draft, lines });
                   }}
                 />
-                <label className="field">
-                  <span>Category *</span>
-                  <select
-                    required
-                    value={line.itemCategory}
-                    onChange={(e) => setLine(i, 'itemCategory', e.target.value)}
-                  >
-                    <option value="">Choose category</option>
-                    {settings.itemCategories.map((v: string) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
                 <label className="field">
                   <span>Unit *</span>
                   <input
