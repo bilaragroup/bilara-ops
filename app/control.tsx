@@ -9,6 +9,8 @@ import { defaultSettings } from '@/lib/settings';
 import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
 import ApprovalQueue from './approval-queue';
+import PurchasePlan from './purchase-plan';
+import AuditReview from './audit-review';
 import RescheduleRequest from './reschedule-request';
 import { requestPolicy, plannedWindowRoute } from '@/lib/request-policy';
 import WeekInput from './week-input';
@@ -1042,6 +1044,8 @@ export default function Control({ user, testUserSwitch }: any) {
               ['weekly', 'Dashboard', Wallet],
               ['plan', 'Purchase requests', ClipboardList],
               ['request', 'Ad hoc requests', ClipboardList],
+              ['purchase-plan', 'Purchase plan', Wallet],
+              ['audit', 'Audit review', ShieldCheck],
               ['orders', 'Purchase orders', PackageCheck],
               ['payment', 'Payment forecast', Wallet],
               ['documents', 'Documents', ClipboardList],
@@ -1052,8 +1056,10 @@ export default function Control({ user, testUserSwitch }: any) {
             ]
               .filter(
                 ([v]) =>
-                  !['projects', 'users', 'settings'].includes(String(v)) ||
-                  has(user),
+                  (!['projects', 'users', 'settings'].includes(String(v)) ||
+                    has(user)) &&
+                  (v !== 'purchase-plan' || canPurchase || canPrivate) &&
+                  (v !== 'audit' || has(user, 'Audit', 'GM')),
               )
               .map(([v, label, Icon]: any) => (
                 <TabsTrigger key={v} value={v}>
@@ -1082,6 +1088,8 @@ export default function Control({ user, testUserSwitch }: any) {
                     documents: 'Documents',
                     purchase: 'Purchase register',
                     request: 'Ad hoc requests',
+                    'purchase-plan': 'Purchase plan',
+                    audit: 'Audit review',
                     projects: 'Projects',
                     users: 'Users & roles',
                     settings: 'Settings',
@@ -1187,6 +1195,24 @@ export default function Control({ user, testUserSwitch }: any) {
               refresh={refresh}
             />
           </TabsContent>
+          <TabsContent value="purchase-plan">
+            <PurchasePlan
+              records={records}
+              project={project}
+              window={window}
+              refresh={refresh}
+              openRecord={setSelected}
+            />
+          </TabsContent>
+          <TabsContent value="audit">
+            <AuditReview
+              records={records}
+              project={project}
+              window={window}
+              refresh={refresh}
+              openRecord={setSelected}
+            />
+          </TabsContent>
           <TabsContent value="weekly">
             <Dashboard
               user={user}
@@ -1224,8 +1250,9 @@ export default function Control({ user, testUserSwitch }: any) {
           </TabsContent>
           {['plan', 'purchase', 'payment', 'request'].map((t) => (
             <TabsContent value={t} key={t}>
-              {t === 'plan' && canGM && (
+              {t === 'plan' && (canGM || has(user, 'BOQ Team')) && (
                 <ApprovalQueue
+                  gm={canGM}
                   records={records}
                   project={project}
                   window={window}

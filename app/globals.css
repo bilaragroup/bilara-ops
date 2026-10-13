@@ -229,3 +229,19 @@ body{margin:0;background:var(--background);color:var(--foreground);font-size:16p
 .user-search select{height:42px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--foreground);font-size:14px}.user-search select:focus{outline:2px solid var(--ring);outline-offset:1px}
 .filter-label{display:flex;flex-direction:column;gap:5px;color:var(--muted-foreground);font-size:12px;font-weight:650}.filter-label select{height:42px}.user-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;grid-column:5}.user-actions .textbutton{font-size:12px}.user-access-row{grid-template-columns:42px minmax(190px,1.4fr) minmax(170px,1fr) auto auto}@media(max-width:850px){.user-actions{grid-column:2/4;justify-content:flex-start}.user-access-row{grid-template-columns:42px 1fr auto}}
 .user-search{align-items:flex-end}.filter-label{line-height:1.1}.filter-label select{margin-top:2px;min-width:118px}.user-search input,.user-search button,.user-search select{vertical-align:bottom}
+
+/* Purchase plan and audit review */
+.plan-metrics{margin-top:4px}.plan-scroll{overflow-x:auto}.plan-scroll table{min-width:1100px}
+.plan-input{height:34px;padding:6px 8px;border:1px solid #c8d6df;border-radius:5px;font-size:13px;width:100%;min-width:120px;background:white;color:inherit;display:block}
+.plan-input+.plan-input{margin-top:5px}.plan-input.small{min-width:90px}.plan-input.num{min-width:90px;text-align:right}
+.pos{color:#226645;font-weight:600}.neg{color:#a1312a;font-weight:600}.warn{color:#805b0b}
+.metric:first-child .neg{color:#ffc0bb}.metric strong.neg{color:#a1312a}
+.row-warn{background:#fffaf0}.row-bad{background:#fff3f2}
+.audit-note{display:block;color:#a1312a!important;font-size:12px;margin-top:5px}
+.audit-actions{padding:18px 24px;border-top:1px solid #e1e9ef;display:flex;flex-direction:column;gap:12px}
+button.danger{color:#a1312a}
+.dark .plan-input{background:var(--card);border-color:var(--border);color:var(--foreground)}
+.dark .row-warn{background:#3a321d55}.dark .row-bad{background:#4a262a55}.dark .pos{color:#a5e5bf}.dark .neg{color:#ffc0bb}.dark .warn{color:#f6d895}.dark .audit-actions{border-color:var(--border)}
+.plan-scroll td,.plan-scroll th{padding:10px 12px!important}.plan-scroll td.nw{white-space:nowrap}.plan-scroll td:nth-child(2){min-width:190px}
+.plan-status{margin-top:6px}.plan-status .tag{font-size:11px;padding:2px 7px}
+.scroll-x{overflow-x:auto}

@@ -4,8 +4,9 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/components/ui/table';
 import {money} from '@/lib/calculations';
 
-export default function ApprovalQueue({records,project,window,refresh}:any){
- const pending=useMemo(()=>records.filter((r:any)=>{const baselineReady=r.stage==='Submitted'&&Number(r.kind==='plan'?r.boqRate:r.estimateRate)>0&&!!r.boqOwner;return ['plan','request'].includes(r.kind)&&(r.gmApproval?.state==='Pending'||baselineReady)&&(project==='all'||r.project===project)&&r.window===window;}),[records,project,window]);
+export default function ApprovalQueue({records,project,window,refresh,gm=true}:any){
+ // The BOQ Team releases normal requests; late-request exceptions stay with the GM.
+ const pending=useMemo(()=>records.filter((r:any)=>{const baselineReady=r.stage==='Submitted'&&Number(r.kind==='plan'?r.boqRate:r.estimateRate)>0&&!!r.boqOwner;const exception=r.gmApproval?.state==='Pending';return ['plan','request'].includes(r.kind)&&(gm?exception||baselineReady:!exception&&baselineReady)&&(project==='all'||r.project===project)&&r.window===window;}),[records,project,window,gm]);
  const [selected,setSelected]=useState<string[]>([]),[note,setNote]=useState(''),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
  const chosen=pending.filter((r:any)=>selected.includes(r.id));
  async function decide(decision:string){if(!chosen.length||!note.trim()||!confirmed)return;setBusy(true);setError('');setMessage('');try{const versions=Object.fromEntries(chosen.map((r:any)=>[r.id,r.version]));const res=await fetch('/api/gm-approval',{signal:AbortSignal.timeout(20000),method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:chosen.map((r:any)=>r.id),versions,note,decision,confirmed})});const data:any=await res.json();if(!res.ok)throw Error(data.error);setSelected([]);setNote('');setConfirmed(false);setMessage(`${data.count||chosen.length} request${chosen.length===1?'':'s'} ${decision.toLowerCase()}.`);await refresh();}catch(e){setError(e instanceof DOMException&&e.name==='TimeoutError'?'Bulk approval timed out. Refresh and retry.':String(e));}finally{setBusy(false);}}
