@@ -5,6 +5,7 @@ import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/compon
 import {money} from '@/lib/calculations';
 import {addDays} from '@/lib/weekly';
 import {lineSaving,planTotals,targetUnitRate} from '@/lib/purchase-plan';
+import CarryForward from './carry-forward';
 
 // Purchase team's weekly purchase plan: every BOQ-released item for the week in
 // one table. They enter the vendor and rate for each line, see the saving against
@@ -56,7 +57,7 @@ export default function PurchasePlan({records,project,window,refresh,openRecord}
     <TableHead>Project / item</TableHead><TableHead>Qty</TableHead><TableHead>Target rate</TableHead><TableHead>Vendor</TableHead><TableHead>Vendor rate</TableHead><TableHead>Quote ref.</TableHead><TableHead>Entity</TableHead><TableHead>Value</TableHead><TableHead>Saving vs target</TableHead>
    </TableRow></TableHeader><TableBody>{rows.map((r:any)=>{const e=edits[r.id],can=editable(r)&&!!e,d=draft(r),s=lineSaving(d);return <TableRow key={r.id} className={s.aboveTarget?'row-warn':''}>
     <TableCell>{can&&<Checkbox aria-label={'Select '+r.item} checked={selected.includes(r.id)} onCheckedChange={(v)=>setSelected(v?[...selected,r.id]:selected.filter(x=>x!==r.id))}/>}</TableCell>
-    <TableCell><button className="rowlink" onClick={()=>openRecord(r)}><b>{r.item}</b><span>Project {r.project} · M{r.milestone} · Act {r.activity} {r.activityName}{r.kind==='request'?' · Ad hoc':''}</span></button><div className="plan-status">{stageTag(r)}</div>{r.auditReturn&&r.stage==='BOQ priced'&&<small className="audit-note">Audit: {r.auditReturn.note}</small>}</TableCell>
+    <TableCell><button className="rowlink" onClick={()=>openRecord(r)}><b>{r.item}</b><span>Project {r.project} · M{r.milestone} · Act {r.activity} {r.activityName}{r.kind==='request'?' · Ad hoc':''}</span></button><div className="plan-status">{stageTag(r)}{r.reschedule?.from&&<span className="tag">Moved from {r.reschedule.from}</span>}</div>{r.auditReturn&&r.stage==='BOQ priced'&&<small className="audit-note">Audit: {r.auditReturn.note}</small>}</TableCell>
     <TableCell className="nw">{s.qty} {r.unit}</TableCell>
     <TableCell className="nw">{targetUnitRate(r)??'—'}</TableCell>
     <TableCell>{can?<><input className="plan-input" aria-label="Vendor" placeholder="Vendor" value={e.vendor} maxLength={200} onChange={x=>set(r.id,'vendor',x.target.value)}/><input className="plan-input small" aria-label="Vendor phone" placeholder="Phone" value={e.vendorPhone} maxLength={40} onChange={x=>set(r.id,'vendorPhone',x.target.value)}/></>:<>{r.vendor||'—'}<small>{r.vendorPhone}</small></>}</TableCell>
@@ -67,6 +68,7 @@ export default function PurchasePlan({records,project,window,refresh,openRecord}
     <TableCell className="nw"><span className={s.savingVsTarget==null?'':s.savingVsTarget<0?'neg':'pos'}>{money(s.savingVsTarget)}</span>{s.aboveTarget&&<small className="neg">Above target</small>}</TableCell>
    </TableRow>})}</TableBody></Table></div>}
   </div>
+  <CarryForward records={records} project={project} window={window} refresh={refresh}/>
   {results&&<p className={'alert '+(results.errors.length?'amber':'green')} role="status">{results.ok} line{results.ok===1?'':'s'} saved.{results.errors.length?' Not saved: '+results.errors.join(' · '):''}</p>}
  </section>;
 }

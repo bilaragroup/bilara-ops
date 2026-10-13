@@ -10,6 +10,7 @@ import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
 import ApprovalQueue from './approval-queue';
 import PurchasePlan from './purchase-plan';
+import CarryForward from './carry-forward';
 import AuditReview from './audit-review';
 import RescheduleRequest from './reschedule-request';
 import { requestPolicy, plannedWindowRoute } from '@/lib/request-policy';
@@ -1250,6 +1251,14 @@ export default function Control({ user, testUserSwitch }: any) {
           </TabsContent>
           {['plan', 'purchase', 'payment', 'request'].map((t) => (
             <TabsContent value={t} key={t}>
+              {t === 'plan' && !canPurchase && has(user, 'Project Manager', 'GM') && (
+                <CarryForward
+                  records={records}
+                  project={project}
+                  window={window}
+                  refresh={refresh}
+                />
+              )}
               {t === 'plan' && (canGM || has(user, 'BOQ Team')) && (
                 <ApprovalQueue
                   gm={canGM}

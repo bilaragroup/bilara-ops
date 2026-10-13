@@ -292,7 +292,7 @@ async function handlePOST(req: Request, a: Actor) {
     }
     if (old?.baselineIssuedBy) data.baselineIssuedBy = old.baselineIssuedBy;
     // Audit decisions are written by /api/audit-decision; keep them on later edits.
-    for (const k of ['auditBy', 'auditSavings', 'auditReturn'])
+    for (const k of ['auditBy', 'auditSavings', 'auditReturn', 'reschedule', 'carryForwards'])
       if (old?.[k]) data[k] = old[k];
     if (
       has(a, 'GM') &&
