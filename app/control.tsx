@@ -354,6 +354,8 @@ export default function Control({ user, testUserSwitch }: any) {
     [milestoneFilter, setMilestoneFilter] = useState('all'),
     [activityFilter, setActivityFilter] = useState(''),
     [query, setQuery] = useState(''),
+    // Requests list: show active (default), closed, or all.
+    [statusFilter, setStatusFilter] = useState<'active' | 'closed' | 'all'>('active'),
     [offset, setOffset] = useState(0),
     [loading, setLoading] = useState(true),
     [sourceLoading, setSourceLoading] = useState(false),
@@ -465,7 +467,11 @@ export default function Control({ user, testUserSwitch }: any) {
       .join(' ')
       .toLowerCase()
       .includes(query.toLowerCase());
-  const active = (
+  // A request is closed once it is closed after payment, rejected, or cancelled.
+  const isClosed = (r: any) =>
+    r.closure?.state === 'Closed' || r.stage === 'Rejected' || r.stage === 'Cancelled';
+  const statusTab = tab === 'plan' || tab === 'request';
+  const unfiltered = (
     tab === 'plan'
       ? plans
       : tab === 'payment'
@@ -482,6 +488,16 @@ export default function Control({ user, testUserSwitch }: any) {
           )
         : 0,
     );
+  const statusCounts = {
+    active: unfiltered.filter((r) => !isClosed(r)).length,
+    closed: unfiltered.filter(isClosed).length,
+    all: unfiltered.length,
+  };
+  const active = statusTab
+    ? unfiltered.filter(
+        (r) => statusFilter === 'all' || (statusFilter === 'closed') === isClosed(r),
+      )
+    : unfiltered;
   const metrics = useMemo(() => {
     const ps = plans.filter(matches),
       bs = buys.filter(matches),
@@ -848,7 +864,7 @@ export default function Control({ user, testUserSwitch }: any) {
           <div>
             <h2>
               {tab === 'plan'
-                ? 'Active requirements'
+                ? 'Requests'
                 : tab === 'purchase'
                   ? 'Purchase register'
                   : tab === 'payment'
@@ -856,6 +872,27 @@ export default function Control({ user, testUserSwitch }: any) {
                     : 'Ad hoc requests'}
             </h2>
             <p>{active.length} records</p>
+            {statusTab && (
+              <div className="view-switch status-filter" role="group" aria-label="Show requests">
+                {(
+                  [
+                    ['active', 'Active'],
+                    ['closed', 'Closed'],
+                    ['all', 'All'],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    className={statusFilter === k ? 'chosen' : ''}
+                    aria-pressed={statusFilter === k}
+                    onClick={() => setStatusFilter(k)}
+                  >
+                    {label}
+                    <span>{statusCounts[k]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button
             className="secondary"
