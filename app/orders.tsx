@@ -3,16 +3,18 @@ import OrderProgress from './order-progress';
 import WeekInput from './week-input';
 import GroupOrder from './group-order';
 import {orderGroups} from '@/lib/orders';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/components/ui/table';
 import {addDays,validWindow,recordWindow,inPeriod,periodLabel,type Period} from '@/lib/weekly';
 import {money} from '@/lib/calculations';
 import {has} from '@/lib/permissions';
-export default function Orders({records,window,period,setWindow,project,setProject,addPurchase,addSchedule,start,refresh,user}:any){
+export default function Orders({records,window,period,setWindow,project,setProject,addPurchase,addSchedule,start,refresh,user,searchSeed}:any){
  // Only Purchase creates POs; others see what is ready and who acts next.
  const canOrder=!user||has(user,'Purchase Manager','Purchase Team');
  const per:Period=period||{key:'week',from:window,to:window};
  const [query,setQuery]=useState('');
+ // Global search can open this page already filtered (e.g. to one vendor).
+ useEffect(()=>{if(searchSeed?.text)setQuery(searchSeed.text);},[searchSeed]);
  const purchases=records.filter((r:any)=>r.kind==='purchase');
  const match=(r:any)=>(project==='all'||r.project===project)&&inPeriod(recordWindow(r,records),per)&&[r.item,r.vendor,r.po].join(' ').toLowerCase().includes(query.toLowerCase());
  const remaining=(r:any)=>Math.max(0,Number(r.boqQty||r.qty)-purchases.filter((p:any)=>p.parent===r.id&&p.status!=='Cancelled').reduce((n:number,p:any)=>n+Number(p.qty),0));

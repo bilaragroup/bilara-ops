@@ -109,3 +109,9 @@ Site roles see vendor names but not prices or quote files. Tests: `node scripts/
 ## Approved activity BOQ quantity
 
 Project managers no longer enter it. The BOQ Team enters it when reviewing a request (it is required before BOQ can release the request). Later requests for the same project, milestone, activity, item and unit pick it up automatically, and the PM form shows how much is approved, already requested and left. Requests above what is left go to the GM. Tests: `node scripts/test-boq-quantity.mjs`.
+
+## Search everything (Ctrl+K)
+
+A **Search** button in the header (or Ctrl+K / ⌘K, or `/` anywhere outside a text box) opens one search across purchase and ad hoc requests, plumbing & electrical quotes, purchase-order lines, payment schedules, vendors, projects and pages. Every word typed must match (for example `121 overdue` or `kerala steel`). It matches item, project number or name, PO number, vendor, owner, activity (`A014`), milestone (`M3`), quotation reference, bill, GRN and status. Enter opens the record's detail; a vendor opens Purchase orders filtered to that vendor over all weeks; a project filters every screen; plumbing & electrical items open their page. The last six records opened are shown before typing, stored only in this browser.
+
+It searches only the records the server already returned for the signed-in role, and results never show amounts, so rate confidentiality is unchanged. Code: `app/global-search.tsx`.

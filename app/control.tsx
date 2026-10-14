@@ -29,6 +29,7 @@ import Dashboard from './dashboard';
 import ThemeToggle from './theme-toggle';
 import Orders from './orders';
 import Bulk from './bulk';
+import GlobalSearch from './global-search';
 import {
   planningWindow,
   validWindow,
@@ -356,6 +357,8 @@ export default function Control({ user, testUserSwitch }: any) {
     [activityFilter, setActivityFilter] = useState(''),
     [query, setQuery] = useState(''),
     [carryOpen, setCarryOpen] = useState(false),
+    // Global search hands Purchase orders a search text (e.g. a vendor name).
+    [ordersSeed, setOrdersSeed] = useState<{ text: string } | null>(null),
     // Purchase requests page: materials (by quantity) or plumbing & electrical (by quote).
     [reqView, setReqView] = useState<'materials' | 'pe'>('materials'),
     // Requests list: show active (default), closed, or all.
@@ -764,6 +767,31 @@ export default function Control({ user, testUserSwitch }: any) {
           : p,
       ]),
   ];
+  // Sidebar pages this user can open; global search offers the same list.
+  const navItems: [string, string, any][] = [
+              ['weekly', 'Dashboard', Wallet],
+              ['plan', 'Purchase requests', ClipboardList],
+              ['request', 'Ad hoc requests', ClipboardList],
+              ['purchase-plan', 'Purchase plan', Wallet],
+              ['audit', 'Audit review', ShieldCheck],
+              ['orders', 'Purchase orders', PackageCheck],
+              ['grn', 'Receive goods (GRN)', PackageCheck],
+              ['payment', 'Payment forecast', Wallet],
+              ['documents', 'Documents', ClipboardList],
+              ['backup', 'Backups', Download],
+              ['projects', 'Projects', Building2],
+              ['users', 'Users & roles', UserCog],
+              ['settings', 'Settings', ShieldCheck],
+            ]
+              .filter(
+                ([v]) =>
+                  (!['projects', 'users', 'settings'].includes(String(v)) ||
+                    has(user)) &&
+                  (v !== 'purchase-plan' || canPurchase || canPrivate) &&
+                  (v !== 'audit' || has(user, 'Audit', 'GM')) &&
+                  (v !== 'grn' ||
+                    has(user, 'Site Engineer', 'Project Manager', 'Purchase Manager', 'Purchase Team')),
+              ) as any;
   function sourceRows() {
     return (
       <>
@@ -1154,30 +1182,7 @@ export default function Control({ user, testUserSwitch }: any) {
           </div>
           <p className="nav-caption">WORKSPACE</p>
           <TabsList className="nav">
-            {[
-              ['weekly', 'Dashboard', Wallet],
-              ['plan', 'Purchase requests', ClipboardList],
-              ['request', 'Ad hoc requests', ClipboardList],
-              ['purchase-plan', 'Purchase plan', Wallet],
-              ['audit', 'Audit review', ShieldCheck],
-              ['orders', 'Purchase orders', PackageCheck],
-              ['grn', 'Receive goods (GRN)', PackageCheck],
-              ['payment', 'Payment forecast', Wallet],
-              ['documents', 'Documents', ClipboardList],
-              ['backup', 'Backups', Download],
-              ['projects', 'Projects', Building2],
-              ['users', 'Users & roles', UserCog],
-              ['settings', 'Settings', ShieldCheck],
-            ]
-              .filter(
-                ([v]) =>
-                  (!['projects', 'users', 'settings'].includes(String(v)) ||
-                    has(user)) &&
-                  (v !== 'purchase-plan' || canPurchase || canPrivate) &&
-                  (v !== 'audit' || has(user, 'Audit', 'GM')) &&
-                  (v !== 'grn' ||
-                    has(user, 'Site Engineer', 'Project Manager', 'Purchase Manager', 'Purchase Team')),
-              )
+            {navItems
               .map(([v, label, Icon]: any) => (
                 <TabsTrigger key={v} value={v}>
                   <Icon size={16} />
@@ -1216,6 +1221,38 @@ export default function Control({ user, testUserSwitch }: any) {
                 )[tab]
               }
             </h1>
+            <GlobalSearch
+              records={records}
+              projects={projectConfigs}
+              pages={navItems.map(([value, label]) => ({ value, label }))}
+              actions={[
+                ...(canStart('plan')
+                  ? [{ id: 'plan', label: 'New purchase request', run: () => { changeTab('plan'); setReqView('materials'); start('plan', { project: project === 'all' ? '' : project }); } }]
+                  : []),
+                ...(canStart('request')
+                  ? [{ id: 'request', label: 'New ad hoc request', run: () => { changeTab('request'); start('request', { project: project === 'all' ? '' : project }); } }]
+                  : []),
+              ]}
+              onOpenRecord={(r) => {
+                if (r.kind === 'quote') {
+                  // Plumbing & electrical requests are worked on their own page.
+                  setProject(r.project);
+                  changeTab('plan');
+                  setReqView('pe');
+                } else setSelected(r);
+              }}
+              onNavigate={changeTab}
+              onProject={(p) => {
+                setProject(p);
+                setOffset(0);
+                setNotice(`Showing project ${p} on every page.`);
+              }}
+              onVendor={(v) => {
+                setPeriod(makePeriod('all'));
+                setOrdersSeed({ text: v });
+                changeTab('orders');
+              }}
+            />
             <ThemeToggle />
             <div className="header-buttons">
             {tab === 'plan' && reqView === 'materials' && !canPurchase && has(user, 'Project Manager', 'GM') && (
@@ -1325,6 +1362,7 @@ export default function Control({ user, testUserSwitch }: any) {
           </TabsContent>
           <TabsContent value="orders">
             <Orders period={period}
+              searchSeed={ordersSeed}
               records={records}
               window={window}
               setWindow={setWindow}
