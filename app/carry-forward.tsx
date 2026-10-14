@@ -9,7 +9,7 @@ import {addDays,inPeriod,singleWeek,weekLabel,type Period} from '@/lib/weekly';
 const MOVABLE=['BOQ priced','Vendors finalized','Audit approved'];
 const stageLabel:Record<string,string>={'BOQ priced':'BOQ approved','Vendors finalized':'With Audit','Audit approved':'Audit approved'};
 
-export default function CarryForward({records,project,window,period,refresh}:any){
+export default function CarryForward({records,project,window,period,refresh,inline=false}:any){
  const per:Period=period||{key:'week',from:window,to:window},multi=!singleWeek(per);
  const ordered=useMemo(()=>new Set(records.filter((r:any)=>r.kind==='purchase'&&r.status!=='Cancelled').map((r:any)=>r.parent)),[records]);
  const lines=useMemo(()=>records.filter((r:any)=>['plan','request'].includes(r.kind)&&inPeriod(r.window,per)&&MOVABLE.includes(r.stage)&&r.closure?.state!=='Closed'&&(!r.gmApproval||r.gmApproval.state==='Approved')).sort((a:any,b:any)=>String(a.window).localeCompare(String(b.window))),[records,per.from,per.to]);
@@ -32,8 +32,10 @@ export default function CarryForward({records,project,window,period,refresh}:any
    setMessage(`${d.count} line${d.count===1?'':'s'} for project ${p} moved to the week of ${to}. Approvals kept.`);setReason('');await refresh({skipDocuments:true});
   }catch(err:any){setError(err?.name==='TimeoutError'?'The move timed out. Refresh and check before retrying.':err.message);}finally{setBusy(false);}
  }
- return <details className="panel carry-forward">
-  <summary><b>Work slipped? Move lines to a later week</b><span className="muted"> · no new approval needed</span></summary>
+ // inline: shown inside the "Work slipped?" dialog opened from the page header.
+ const Wrap:any=inline?'div':'details';
+ return <Wrap className={inline?'carry-forward carry-inline':'panel carry-forward'}>
+  {!inline&&<summary><b>Work slipped? Move lines to a later week</b><span className="muted"> · no new approval needed</span></summary>}
   <form onSubmit={move} className="carry-body">
    <p className="muted">If the site work for this week does not happen (for example, concreting is postponed), move that project's lines to the next purchase plan. BOQ release, vendor rates and audit approval stay as they are, and the move is recorded in the history.</p>
    <div className="formgrid">
@@ -49,5 +51,5 @@ export default function CarryForward({records,project,window,period,refresh}:any
    {error&&<p className="alert red" role="alert">{error}</p>}{message&&<p className="alert green" role="status">{message}</p>}
    <div className="actions"><button className="primary" disabled={busy||!chosen.length||!to||to<=latest||reason.trim().length<3}>{busy?'Moving…':`Move ${chosen.length||''} line${chosen.length===1?'':'s'} to ${to}`}</button></div>
   </form>
- </details>;
+ </Wrap>;
 }

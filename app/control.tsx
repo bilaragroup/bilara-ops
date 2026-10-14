@@ -66,6 +66,7 @@ import {
 } from '@/components/ui/table';
 import {
   Search,
+  CalendarClock,
   Plus,
   ArrowUpRight,
   Download,
@@ -354,6 +355,7 @@ export default function Control({ user, testUserSwitch }: any) {
     [milestoneFilter, setMilestoneFilter] = useState('all'),
     [activityFilter, setActivityFilter] = useState(''),
     [query, setQuery] = useState(''),
+    [carryOpen, setCarryOpen] = useState(false),
     // Requests list: show active (default), closed, or all.
     [statusFilter, setStatusFilter] = useState<'active' | 'closed' | 'all'>('active'),
     [offset, setOffset] = useState(0),
@@ -1205,6 +1207,16 @@ export default function Control({ user, testUserSwitch }: any) {
               }
             </h1>
             <ThemeToggle />
+            <div className="header-buttons">
+            {tab === 'plan' && !canPurchase && has(user, 'Project Manager', 'GM') && (
+              <button
+                className="secondary"
+                title="Site work postponed? Move approved lines to a later week without new approval."
+                onClick={() => setCarryOpen(true)}
+              >
+                <CalendarClock size={16} /> Work slipped?
+              </button>
+            )}
             {['plan', 'request'].includes(tab) && canStart(tab) && (
               <button
                 className="primary"
@@ -1215,6 +1227,7 @@ export default function Control({ user, testUserSwitch }: any) {
                 + {tab === 'plan' ? 'Purchase request' : 'Ad hoc request'}
               </button>
             )}
+            </div>
           </div>
           {error && (
             <div className="alert red" role="alert">
@@ -1389,12 +1402,20 @@ export default function Control({ user, testUserSwitch }: any) {
           {['plan', 'purchase', 'payment', 'request'].map((t) => (
             <TabsContent value={t} key={t}>
               {t === 'plan' && !canPurchase && has(user, 'Project Manager', 'GM') && (
-                <CarryForward period={period}
-                  records={records}
-                  project={project}
-                  window={window}
-                  refresh={refresh}
-                />
+                <Dialog open={carryOpen} onOpenChange={setCarryOpen}>
+                  <DialogContent className="wide-dialog">
+                    <DialogTitle>Work slipped? Move lines to a later week</DialogTitle>
+                    <DialogDescription>No new approval needed.</DialogDescription>
+                    <CarryForward
+                      inline
+                      period={period}
+                      records={records}
+                      project={project}
+                      window={window}
+                      refresh={refresh}
+                    />
+                  </DialogContent>
+                </Dialog>
               )}
               {t === 'plan' && (canGM || has(user, 'BOQ Team')) && (
                 <ApprovalQueue period={period}
