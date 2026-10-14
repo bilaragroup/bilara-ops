@@ -174,7 +174,7 @@ export default function QuoteRequests({records,documents,projects,project,period
  const counts={mine:list.filter(mine).length,open:list.filter(open).length,period:list.filter(r=>inPeriod(r.window,period)).length};
  const seesBudget=has(user,'GM','BOQ Team','Audit','Purchase Manager','Purchase Team','Accounts');
  return <div className="quotes">
-  <p className="muted quote-intro">For plumbing and electrical, the site sends a photo of the list. Purchase gets quotes from vendors, BOQ picks the best value within the house budget (a better brand may cost a little more), Audit approves, then the PO, site GRN, bill check and Thursday payment run as usual.</p>
+  
   {has(user,'Site Engineer','Project Manager','GM')&&<NewRequest projects={projects} project={project} user={user} refresh={refresh}/>}
   {seesBudget&&<Budgets records={records} projects={projects} project={project} user={user} refresh={refresh}/>}
   <div className="view-switch quote-filter">{[['mine','Waiting for me',counts.mine],['open','All open',counts.open],['period','Needed in selected weeks',counts.period]].map(([k,l,n]:any)=><button key={k} className={show===k?'chosen':''} onClick={()=>setShow(k)}>{l}<span>{n}</span></button>)}</div>

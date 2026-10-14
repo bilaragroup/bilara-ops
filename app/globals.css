@@ -279,3 +279,4 @@ button.danger{color:#a1312a}
 .status-filter{margin:12px 0 0;flex-wrap:wrap}
 .bulk-help{font-size:14px;line-height:1.6;margin:12px 0 6px}.bulk-steps{font-size:13px;line-height:1.7;padding-left:20px;margin:0 0 12px;list-style:decimal;color:var(--muted-foreground)}.carry-inline{margin-top:8px}.carry-inline .carry-body{padding:0}
 .header-buttons{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}.header-buttons:empty{display:none}.carry-inline .carry-body{margin-top:0}
+.request-kind{margin:0 0 16px;flex-wrap:wrap;align-items:center}.request-kind button{font-size:15px}.request-kind p{flex-basis:100%;margin:6px 0 0 4px;display:block!important;font-size:13px}

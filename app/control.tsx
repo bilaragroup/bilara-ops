@@ -356,6 +356,8 @@ export default function Control({ user, testUserSwitch }: any) {
     [activityFilter, setActivityFilter] = useState(''),
     [query, setQuery] = useState(''),
     [carryOpen, setCarryOpen] = useState(false),
+    // Purchase requests page: materials (by quantity) or plumbing & electrical (by quote).
+    [reqView, setReqView] = useState<'materials' | 'pe'>('materials'),
     // Requests list: show active (default), closed, or all.
     [statusFilter, setStatusFilter] = useState<'active' | 'closed' | 'all'>('active'),
     [offset, setOffset] = useState(0),
@@ -495,6 +497,18 @@ export default function Control({ user, testUserSwitch }: any) {
     closed: unfiltered.filter(isClosed).length,
     all: unfiltered.length,
   };
+  // Plumbing & electrical requests waiting for this person (badge on the switch).
+  const peWaiting = records.filter(
+    (r) =>
+      r.kind === 'quote' &&
+      (project === 'all' || r.project === project) &&
+      ((r.stage === 'Awaiting quotes' && has(user, 'Purchase Manager', 'Purchase Team')) ||
+        (r.stage === 'With BOQ' && has(user, 'BOQ Team')) ||
+        (r.stage === 'BOQ selected' && has(user, 'Audit')) ||
+        (r.stage === 'Audit approved' &&
+          !records.some((p) => p.kind === 'purchase' && p.parent === r.id && p.status !== 'Cancelled') &&
+          has(user, 'Purchase Manager', 'Purchase Team'))),
+  ).length;
   const active = statusTab
     ? unfiltered.filter(
         (r) => statusFilter === 'all' || (statusFilter === 'closed') === isClosed(r),
@@ -1146,7 +1160,6 @@ export default function Control({ user, testUserSwitch }: any) {
               ['weekly', 'Dashboard', Wallet],
               ['plan', 'Purchase requests', ClipboardList],
               ['request', 'Ad hoc requests', ClipboardList],
-              ['quotes', 'Plumbing & electrical', ClipboardList],
               ['purchase-plan', 'Purchase plan', Wallet],
               ['audit', 'Audit review', ShieldCheck],
               ['orders', 'Purchase orders', PackageCheck],
@@ -1164,7 +1177,6 @@ export default function Control({ user, testUserSwitch }: any) {
                     has(user)) &&
                   (v !== 'purchase-plan' || canPurchase || canPrivate) &&
                   (v !== 'audit' || has(user, 'Audit', 'GM')) &&
-                  (v !== 'quotes' || !user.roles.every((x: string) => x === 'QC' || x === 'Accounts')) &&
                   (v !== 'grn' ||
                     has(user, 'Site Engineer', 'Project Manager', 'Purchase Manager', 'Purchase Team')),
               )
@@ -1208,7 +1220,7 @@ export default function Control({ user, testUserSwitch }: any) {
             </h1>
             <ThemeToggle />
             <div className="header-buttons">
-            {tab === 'plan' && !canPurchase && has(user, 'Project Manager', 'GM') && (
+            {tab === 'plan' && reqView === 'materials' && !canPurchase && has(user, 'Project Manager', 'GM') && (
               <button
                 className="secondary"
                 title="Site work postponed? Move approved lines to a later week without new approval."
@@ -1217,7 +1229,7 @@ export default function Control({ user, testUserSwitch }: any) {
                 <CalendarClock size={16} /> Work slipped?
               </button>
             )}
-            {['plan', 'request'].includes(tab) && canStart(tab) && (
+            {['plan', 'request'].includes(tab) && canStart(tab) && !(tab === 'plan' && reqView === 'pe') && (
               <button
                 className="primary"
                 onClick={() =>
@@ -1335,17 +1347,6 @@ export default function Control({ user, testUserSwitch }: any) {
               openRecord={setSelected}
             />
           </TabsContent>
-          <TabsContent value="quotes">
-            <QuoteRequests
-              records={records}
-              documents={documents}
-              projects={projectConfigs}
-              project={project}
-              period={period}
-              user={user}
-              refresh={refresh}
-            />
-          </TabsContent>
           <TabsContent value="grn">
             <ReceiveGoods
               records={records}
@@ -1401,6 +1402,44 @@ export default function Control({ user, testUserSwitch }: any) {
           </TabsContent>
           {['plan', 'purchase', 'payment', 'request'].map((t) => (
             <TabsContent value={t} key={t}>
+              {t === 'plan' && (
+                <div className="view-switch request-kind" role="group" aria-label="Request type">
+                  {(
+                    [
+                      ['materials', 'Materials', 'Cement, steel, sand… ordered by quantity'],
+                      ['pe', 'Plumbing & electrical', 'Photo of the list → vendor quotes → BOQ picks within the house budget'],
+                    ] as const
+                  ).map(([k, label, hint]) => (
+                    <button
+                      key={k}
+                      className={reqView === k ? 'chosen' : ''}
+                      aria-pressed={reqView === k}
+                      title={hint}
+                      onClick={() => setReqView(k)}
+                    >
+                      {label}
+                      {k === 'pe' && peWaiting > 0 && <span>{peWaiting} waiting</span>}
+                    </button>
+                  ))}
+                  <p>
+                    {reqView === 'pe'
+                      ? 'Bought against a cost budget per house: site sends a photo of the list, Purchase gets quotes, BOQ chooses, Audit approves.'
+                      : 'Bought by quantity against the BOQ: request, BOQ check, vendor rates, Audit, PO.'}
+                  </p>
+                </div>
+              )}
+              {t === 'plan' && reqView === 'pe' ? (
+                <QuoteRequests
+                  records={records}
+                  documents={documents}
+                  projects={projectConfigs}
+                  project={project}
+                  period={period}
+                  user={user}
+                  refresh={refresh}
+                />
+              ) : (
+              <>
               {t === 'plan' && !canPurchase && has(user, 'Project Manager', 'GM') && (
                 <Dialog open={carryOpen} onOpenChange={setCarryOpen}>
                   <DialogContent className="wide-dialog">
@@ -1528,6 +1567,8 @@ export default function Control({ user, testUserSwitch }: any) {
                 />
               )}
               <section className="panel tablepanel">{liveRows()}</section>
+              </>
+              )}
             </TabsContent>
           ))}
           <TabsContent value="review">

@@ -97,7 +97,7 @@ Documents can retain an HTTPS Google Drive/Docs link instead of R2 file bytes; l
 
 Plumbing and electrical are bought against a cost budget per house, not item by item.
 
-1. **BOQ / GM** set the plumbing and electrical budget once per project (tab *Plumbing & electrical → Budgets per house*).
+1. **BOQ / GM** set the plumbing and electrical budget once per project (*Purchase requests → Plumbing & electrical → Budgets per house*).
 2. **Site engineer or PM** uploads a photo of the plumber's or electrician's handwritten list with the date it is needed.
 3. **Purchase** shares the photo with vendors (optionally types it out as one list so every vendor quotes the same items) and records each vendor's total quote, brands, credit days and quote file. One quote needs a reason.
 4. **BOQ** picks the best value within what is left of the budget. A dearer quote (better brand) is allowed with a reason; a quote above the remaining budget is refused.
