@@ -15,6 +15,7 @@ import {
 import { validateWorkflow } from '@/lib/workflow';
 import { indiaToday, addDays, thursday } from '@/lib/weekly';
 import { database, decode } from '@/lib/database';
+import { findLine, scheduleSource } from '@/lib/boq-schedule';
 import {
   cents,
   dateValid,
@@ -502,9 +503,30 @@ async function handlePOST(req: Request, a: Actor) {
             String(r.unit).trim().toLowerCase() ===
               String(data.unit).trim().toLowerCase(),
         );
-      const established = sameItem
-        .map((r) => Number(r.activityBoqQty))
-        .find((n) => Number.isFinite(n) && n > 0);
+      // A saved BOQ schedule line is the authority for the approved activity quantity.
+      // Once a request is priced its quantity is frozen, so later schedule changes apply
+      // only to new or still-submitted requests.
+      const frozen =
+        !!old && ['BOQ priced', 'Vendors finalized', 'Audit approved'].includes(old.stage);
+      const scheduleRow = frozen
+        ? null
+        : await db
+            .prepare('SELECT * FROM records WHERE source_id=?')
+            .bind(scheduleSource(data.project))
+            .first<any>();
+      const scheduleLine = scheduleRow
+        ? findLine(decode(scheduleRow), data.milestone, data.activity, data.item, data.unit)
+        : null;
+      if (scheduleLine) {
+        data.activityBoqQty = scheduleLine.qty;
+        data.boqQtySource = 'BOQ schedule';
+      } else if (!frozen) delete data.boqQtySource;
+      else if (old?.boqQtySource) data.boqQtySource = old.boqQtySource;
+      const established = scheduleLine
+        ? undefined
+        : sameItem
+            .map((r) => Number(r.activityBoqQty))
+            .find((n) => Number.isFinite(n) && n > 0);
       if (
         established &&
         data.activityBoqQty !== undefined &&
@@ -532,7 +554,8 @@ async function handlePOST(req: Request, a: Actor) {
           ...sameActivity.map((r) => Number(r.activityRequestNo) || 0),
         ) + 1;
       data.activityRequestCode = data.activity + '.' + data.activityRequestNo;
-      const previousRequested = sameItem.reduce(
+      // Rejected requests do not use up the BOQ quantity.
+      const previousRequested = sameItem.filter((r) => r.stage !== 'Rejected').reduce(
           (n, r) => n + Number(r.requestedQty || r.boqQty || r.qty || 0),
           0,
         ),

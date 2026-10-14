@@ -109,3 +109,16 @@ Site roles see vendor names but not prices or quote files. Tests: `node scripts/
 ## Approved activity BOQ quantity
 
 Project managers no longer enter it. The BOQ Team enters it when reviewing a request (it is required before BOQ can release the request). Later requests for the same project, milestone, activity, item and unit pick it up automatically, and the PM form shows how much is approved, already requested and left. Requests above what is left go to the GM. Tests: `node scripts/test-boq-quantity.mjs`.
+
+## BOQ schedule per project
+
+The BOQ team (or GM) keeps one schedule per project: milestones, activities and items with the approved quantity. It replaces typing the approved activity BOQ quantity on each request.
+
+1. **BOQ schedule** in the sidebar (BOQ Team, GM, PM, Audit). Choose the project.
+2. **Download template.** The project number is already filled in; Milestone and Item have dropdowns (Item allows other names). Fill one row per item per activity with the Approved Quantity. No rates go in this sheet; rates stay in the project rate catalogue.
+3. **Upload XLSX.** Every problem is listed with its Excel row (wrong project, unknown milestone, missing quantity, the same item twice in an activity, two names for one activity) and nothing is saved until they are fixed. A clean file shows what will be added, changed and removed, and any item already requested above its new quantity, before saving. Uploading replaces the project schedule; large files are saved a few milestones at a time.
+4. **PM request form.** After the project and milestone, the PM picks the activity from the schedule (or "Activity not in the BOQ schedule"), then taps an item button that shows how much is left. The note under each line shows approved, already requested and left; above what is left goes to the GM as before.
+
+Rules: a schedule line (project + milestone + activity + item + unit) sets the approved activity quantity on new and still-submitted requests; whatever the PM or BOQ types for it is ignored. Items not in the schedule keep the earlier behaviour (BOQ enters the quantity on review). Priced requests keep the quantity they were checked against. With a project rate and a schedule line, a request is priced at once. Rejected requests no longer use up the BOQ quantity. Saving needs the version the user opened, so two uploads cannot overwrite each other; each upload and clear is kept in the history with what changed.
+
+Tests: `node scripts/test-boq-schedule.mjs` (10 checks; needs Node 22.18 or later because it imports `lib/boq-schedule.ts` directly). Code: `lib/boq-schedule.ts` (shared rules), `lib/boq-schedule-excel.ts` (template and reading), `app/boq-schedule.tsx` (page), `app/api/boq-schedule/route.ts` (saving).

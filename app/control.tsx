@@ -29,6 +29,15 @@ import Dashboard from './dashboard';
 import ThemeToggle from './theme-toggle';
 import Orders from './orders';
 import Bulk from './bulk';
+import BoqSchedule from './boq-schedule';
+import {
+  scheduleFor,
+  activitiesOf,
+  linesOf,
+  findLine,
+  requestedAgainst,
+  lineKey,
+} from '@/lib/boq-schedule';
 import {
   planningWindow,
   validWindow,
@@ -79,6 +88,7 @@ import {
   PackageCheck,
   Building2,
   UserCog,
+  ListTree,
 } from 'lucide-react';
 import {
   Entry,
@@ -1158,6 +1168,7 @@ export default function Control({ user, testUserSwitch }: any) {
               ['weekly', 'Dashboard', Wallet],
               ['plan', 'Purchase requests', ClipboardList],
               ['request', 'Ad hoc requests', ClipboardList],
+              ['boq', 'BOQ schedule', ListTree],
               ['purchase-plan', 'Purchase plan', Wallet],
               ['audit', 'Audit review', ShieldCheck],
               ['orders', 'Purchase orders', PackageCheck],
@@ -1175,6 +1186,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     has(user)) &&
                   (v !== 'purchase-plan' || canPurchase || canPrivate) &&
                   (v !== 'audit' || has(user, 'Audit', 'GM')) &&
+                  (v !== 'boq' || has(user, 'BOQ Team', 'GM', 'Project Manager', 'Audit')) &&
                   (v !== 'grn' ||
                     has(user, 'Site Engineer', 'Project Manager', 'Purchase Manager', 'Purchase Team')),
               )
@@ -1209,6 +1221,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     audit: 'Audit review',
                     grn: 'Receive goods (GRN)',
                     quotes: 'Plumbing & electrical',
+                    boq: 'BOQ schedule',
                     projects: 'Projects',
                     users: 'Users & roles',
                     settings: 'Settings',
@@ -1296,7 +1309,7 @@ export default function Control({ user, testUserSwitch }: any) {
                   </label>
                 </>
               )}
-              {weekTab ? (
+              {tab === 'boq' ? null : weekTab ? (
                 <>
                   <label className="field">
                     <span>
@@ -1386,6 +1399,17 @@ export default function Control({ user, testUserSwitch }: any) {
               setWindow={setWindow}
               project={project}
               setProject={setProject}
+              refresh={refresh}
+            />
+          </TabsContent>
+          <TabsContent value="boq">
+            <BoqSchedule
+              records={records}
+              project={project}
+              setProject={setProject}
+              projects={projectConfigs}
+              settings={settings.values}
+              user={user}
               refresh={refresh}
             />
           </TabsContent>
@@ -2114,7 +2138,15 @@ export default function Control({ user, testUserSwitch }: any) {
                         draft={draft}
                         set={setDraft}
                       />
-                      {canPrivate ? (
+                      {draft.boqQtySource === 'BOQ schedule' ? (
+                        <div className="field">
+                          <span>Approved activity BOQ quantity</span>
+                          <p className="muted boq-qty-note">
+                            {draft.activityBoqQty} {draft.unit || ''} · from the BOQ schedule
+                            {canPrivate ? ' (change it on the BOQ schedule page)' : ''}
+                          </p>
+                        </div>
+                      ) : canPrivate ? (
                         <Field
                           name="activityBoqQty"
                           label="Approved activity BOQ quantity · BOQ Team entry"
@@ -2748,6 +2780,27 @@ export default function Control({ user, testUserSwitch }: any) {
 // on an earlier request; otherwise explains that BOQ will enter it on review.
 function BoqQuantityNote({ records = [], project, milestone, activity, item, unit, qty }: any) {
   if (!item || !project || !activity) return null;
+  // A saved BOQ schedule is the authority when it lists this item for this activity.
+  const schedule = scheduleFor(records, String(project));
+  const scheduled = findLine(schedule, milestone, activity, item, unit);
+  if (scheduled) {
+    const used = requestedAgainst(records, String(project), scheduled);
+    const left = scheduled.qty - used;
+    return (
+      <p className={'full alert boq-qty-note ' + (qty > left ? 'amber' : 'green')}>
+        BOQ schedule: {scheduled.qty} {scheduled.unit} approved for this activity · {used} already requested ·{' '}
+        {Math.max(0, left)} left.
+        {qty > left ? ' This request is above what is left, so it will go to the GM.' : ''}
+      </p>
+    );
+  }
+  if (schedule?.lines?.length)
+    return (
+      <p className="full alert amber boq-qty-note">
+        {item} ({unit || 'no unit'}) is not in the BOQ schedule for this activity. Check the item and unit, or the BOQ
+        team will enter the approved quantity when they review it.
+      </p>
+    );
   const same = records.filter(
     (r: any) =>
       ['plan', 'request'].includes(r.kind) &&
@@ -2805,6 +2858,17 @@ function MultiItemRequest({
           String(item).trim().toLowerCase(),
     );
   const route = plannedWindowRoute(draft.window);
+  // BOQ schedule for this project: activity choices and one-tap items with what is left.
+  const schedule = scheduleFor(records, String(draft.project || ''));
+  const scheduledActivities = activitiesOf(schedule, draft.milestone);
+  const pickedActivity = scheduledActivities.find(
+    (a) => a.activity === String(draft.activity),
+  );
+  const scheduledItems =
+    scheduledActivities.length && !draft.activityOther && pickedActivity
+      ? linesOf(schedule, draft.milestone, draft.activity)
+      : [];
+  const freeActivity = !scheduledActivities.length || draft.activityOther;
   return (
     <form onSubmit={submit}>
       <fieldset disabled={busy}>
@@ -2815,27 +2879,68 @@ function MultiItemRequest({
             <Choice
               label="Milestone"
               value={String(draft.milestone || '')}
-              onChange={(v: string) => change('milestone', v)}
+              onChange={(v: string) => {
+                const next = activitiesOf(schedule, v);
+                setDraft({
+                  ...draft,
+                  milestone: v,
+                  // Keep the activity only if the new milestone's schedule has it.
+                  ...(next.length && !next.some((a) => a.activity === String(draft.activity))
+                    ? { activity: '', activityName: '', activityOther: false }
+                    : {}),
+                });
+              }}
               options={settings.milestones.map((v: string) => [
                 v,
                 'Milestone ' + v,
               ])}
             />
           </label>
-          <Field
-            name="activity"
-            label="Activity number"
-            required
-            draft={draft}
-            set={setDraft}
-          />
-          <Field
-            name="activityName"
-            label="Activity name"
-            required
-            draft={draft}
-            set={setDraft}
-          />
+          {scheduledActivities.length > 0 && (
+            <label className="field">
+              <span>Activity * · from the BOQ schedule</span>
+              <select
+                required
+                value={draft.activityOther ? '__other' : pickedActivity ? pickedActivity.activity : ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const a = scheduledActivities.find((x) => x.activity === v);
+                  setDraft({
+                    ...draft,
+                    activityOther: v === '__other',
+                    activity: a ? a.activity : '',
+                    activityName: a ? a.activityName : '',
+                  });
+                }}
+              >
+                <option value="">Choose activity</option>
+                {scheduledActivities.map((a) => (
+                  <option key={a.activity} value={a.activity}>
+                    {a.activity} · {a.activityName}
+                  </option>
+                ))}
+                <option value="__other">Activity not in the BOQ schedule</option>
+              </select>
+            </label>
+          )}
+          {freeActivity && (
+            <Field
+              name="activity"
+              label="Activity number"
+              required
+              draft={draft}
+              set={setDraft}
+            />
+          )}
+          {freeActivity && (
+            <Field
+              name="activityName"
+              label="Activity name"
+              required
+              draft={draft}
+              set={setDraft}
+            />
+          )}
           <label className="field">
             <span>Owner *</span>
             <Choice
@@ -2935,6 +3040,46 @@ function MultiItemRequest({
                 )}
               </div>
               <div className="formgrid">
+                {scheduledItems.length > 0 && (
+                  <div className="full boq-pick" role="group" aria-label="Items in the BOQ schedule for this activity">
+                    <span>From BOQ schedule:</span>
+                    {scheduledItems.map((s) => {
+                      const left = s.qty - requestedAgainst(records, String(draft.project), s);
+                      const chosen =
+                        lineKey(draft.milestone, draft.activity, line.item, line.unit) ===
+                        lineKey(s.milestone, s.activity, s.item, s.unit);
+                      return (
+                        <button
+                          type="button"
+                          key={s.item + '|' + s.unit}
+                          className={chosen ? 'chosen' : ''}
+                          aria-pressed={chosen}
+                          onClick={() => {
+                            const standard = (RATE_CARD_ITEMS as readonly string[]).includes(s.item);
+                            const lines = draft.lines.map((l: any, n: number) =>
+                              n === i
+                                ? {
+                                    ...l,
+                                    item: s.item,
+                                    itemChoice: standard ? s.item : '__other',
+                                    unit: s.unit,
+                                    itemCategory:
+                                      RATE_CARD_ITEM_DEFAULTS[s.item]?.itemCategory || l.itemCategory || '',
+                                  }
+                                : l,
+                            );
+                            setDraft({ ...draft, lines });
+                          }}
+                        >
+                          {s.item}
+                          <small>
+                            {Math.max(0, Number(left.toFixed(3)))} {s.unit} left
+                          </small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <label className="field">
                   <span>Category *</span>
                   <select
