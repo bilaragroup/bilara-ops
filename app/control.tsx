@@ -1336,6 +1336,7 @@ export default function Control({ user, testUserSwitch }: any) {
               addSchedule={addSchedule}
               start={start}
               refresh={refresh}
+              user={user}
             />
           </TabsContent>
           <TabsContent value="purchase-plan">
