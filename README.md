@@ -109,3 +109,5 @@ Site roles see vendor names but not prices or quote files. Tests: `node scripts/
 ## Approved activity BOQ quantity
 
 Project managers no longer enter it. The BOQ Team enters it when reviewing a request (it is required before BOQ can release the request). Later requests for the same project, milestone, activity, item and unit pick it up automatically, and the PM form shows how much is approved, already requested and left. Requests above what is left go to the GM. Tests: `node scripts/test-boq-quantity.mjs`.
+
+Purchase orders also lists plumbing & electrical requests approved by Audit (section "Plumbing & electrical · ready for PO"), so Purchase issues every PO from one screen. Issuing there uses the same `/api/quotes` order action as the Plumbing & electrical panel (one lump-sum LS line at the chosen quote plus its payment forecast); other roles see "Waiting for Purchase to issue the PO".
