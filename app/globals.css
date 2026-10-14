@@ -281,3 +281,4 @@ button.danger{color:#a1312a}
 .header-buttons{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}.header-buttons:empty{display:none}.carry-inline .carry-body{margin-top:0}
 .request-kind{margin:0 0 16px;flex-wrap:wrap;align-items:center}.request-kind button{font-size:15px}.request-kind p{flex-basis:100%;margin:6px 0 0 4px;display:block!important;font-size:13px}
 .order-help{font-size:13px;margin:4px 0 12px}
+.boq-qty-note{font-size:13px;margin:0}

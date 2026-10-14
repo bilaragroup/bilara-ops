@@ -436,7 +436,7 @@ export async function template(
               'Choose a standard item from the dropdown or type another item. Custom and unmatched items go to BOQ review.',
               'Project numbers: 100–999. Week starts on Thursday; required date must be within Thursday–Wednesday.',
               'Repeat the request-level Project, Milestone, Activity, Activity Name, Week, Owner and Required Date for each item line.',
-              'Activity BOQ Quantity is the item baseline for the same project, milestone, activity, item and unit. Repeated requests are accumulated against it.',
+              'Activity BOQ Quantity is optional for project managers: leave it blank and the BOQ Team enters the approved quantity on review. Repeated requests are accumulated against it.',
               'The application uses the confidential project BOQ rate when available. Otherwise, the BOQ Team enters it.',
               'The purchase target defaults to 5% below the BOQ rate; the BOQ Team may override that reduction for an exception.',
               'Sl. No. is optional. The application assigns technical IDs automatically; those columns remain hidden for normal review.',
@@ -730,7 +730,6 @@ export async function parseUpload(
         ['milestone', 'Milestone'],
         ['activity', 'Activity'],
         ['activityName', 'Activity Name'],
-        ['activityBoqQty', 'Activity BOQ Quantity'],
       ])
         if (!String(data[field] || '').trim())
           errors.push(label + ' is required.');

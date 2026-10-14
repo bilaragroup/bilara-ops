@@ -655,11 +655,10 @@ export default function Control({ user, testUserSwitch }: any) {
         !draft.itemCategory ||
         !draft.milestone ||
         !draft.activity ||
-        !draft.activityName ||
-        !draft.activityBoqQty)
+        !draft.activityName)
     ) {
       setFormError(
-        'Choose Owner, Item Category and Milestone, then enter the Activity, Activity Name and Activity BOQ Quantity.',
+        'Choose Owner, Item Category and Milestone, then enter the Activity and Activity Name.',
       );
       return;
     }
@@ -708,8 +707,7 @@ export default function Control({ user, testUserSwitch }: any) {
           !l.item ||
           !l.itemCategory ||
           !l.unit ||
-          !Number(l.boqQty) ||
-          !Number(l.activityBoqQty),
+          !Number(l.boqQty),
       );
     if (missing) {
       setFormError('Complete the request details and every item line.');
@@ -1970,6 +1968,7 @@ export default function Control({ user, testUserSwitch }: any) {
           )}
           {draft?.lines ? (
             <MultiItemRequest
+              records={records}
               draft={draft}
               setDraft={setDraft}
               settings={settings.values}
@@ -2115,15 +2114,25 @@ export default function Control({ user, testUserSwitch }: any) {
                         draft={draft}
                         set={setDraft}
                       />
-                      <Field
-                        name="activityBoqQty"
-                        label="BOQ quantity for this item"
-                        type="number"
-                        required
-                        readOnly={!!baselineLocked(draft)}
-                        draft={draft}
-                        set={setDraft}
-                      />
+                      {canPrivate ? (
+                        <Field
+                          name="activityBoqQty"
+                          label="Approved activity BOQ quantity · BOQ Team entry"
+                          type="number"
+                          readOnly={!!baselineLocked(draft)}
+                          draft={draft}
+                          set={setDraft}
+                        />
+                      ) : (
+                        <div className="field">
+                          <span>Approved activity BOQ quantity</span>
+                          <p className="muted boq-qty-note">
+                            {Number(draft.activityBoqQty) > 0
+                              ? `${draft.activityBoqQty} ${draft.unit || ''} · set by BOQ`
+                              : 'The BOQ team enters this when they review the request.'}
+                          </p>
+                        </div>
+                      )}
                       {draft.activityRequestCode && (
                         <div className="full alert">
                           Request sequence <b>{draft.activityRequestCode}</b>
@@ -2735,7 +2744,42 @@ export default function Control({ user, testUserSwitch }: any) {
     </main>
   );
 }
+// Shows the PM what BOQ has approved for this activity and item, if BOQ already set it
+// on an earlier request; otherwise explains that BOQ will enter it on review.
+function BoqQuantityNote({ records = [], project, milestone, activity, item, unit, qty }: any) {
+  if (!item || !project || !activity) return null;
+  const same = records.filter(
+    (r: any) =>
+      ['plan', 'request'].includes(r.kind) &&
+      r.project === project &&
+      String(r.milestone) === String(milestone) &&
+      String(r.activity) === String(activity) &&
+      String(r.item).trim().toLowerCase() === String(item).trim().toLowerCase() &&
+      String(r.unit).trim().toLowerCase() === String(unit || '').trim().toLowerCase() &&
+      r.stage !== 'Rejected',
+  );
+  const baseline = same.map((r: any) => Number(r.activityBoqQty)).find((n: number) => n > 0);
+  if (!baseline)
+    return (
+      <p className="full alert boq-qty-note">
+        Approved activity BOQ quantity: the BOQ team enters this when they review the request.
+      </p>
+    );
+  const used = same.reduce(
+    (n: number, r: any) => n + Number(r.requestedQty || r.boqQty || r.qty || 0),
+    0,
+  );
+  const left = baseline - used;
+  return (
+    <p className={'full alert boq-qty-note ' + (qty > left ? 'amber' : 'green')}>
+      BOQ approved {baseline} {unit} for this activity · {used} already requested · {Math.max(0, left)} left.
+      {qty > left ? ' This request is above what is left, so it will go to the GM.' : ''}
+    </p>
+  );
+}
+
 function MultiItemRequest({
+  records = [],
   draft,
   setDraft,
   settings,
@@ -2941,19 +2985,15 @@ function MultiItemRequest({
                     onChange={(e) => setLine(i, 'boqQty', e.target.value)}
                   />
                 </label>
-                <label className="field">
-                  <span>Approved activity BOQ quantity *</span>
-                  <input
-                    required
-                    type="number"
-                    min="0.000001"
-                    step="any"
-                    value={line.activityBoqQty}
-                    onChange={(e) =>
-                      setLine(i, 'activityBoqQty', e.target.value)
-                    }
-                  />
-                </label>
+                <BoqQuantityNote
+                  records={records}
+                  project={draft.project}
+                  milestone={draft.milestone}
+                  activity={draft.activity}
+                  item={line.item}
+                  unit={line.unit}
+                  qty={Number(line.boqQty) || 0}
+                />
                 {line.item && draft.project && (
                   <div
                     className={

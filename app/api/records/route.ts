@@ -93,7 +93,6 @@ const required: Record<string, string[]> = {
     'milestone',
     'activity',
     'activityName',
-    'activityBoqQty',
     'unit',
     'due',
     'owner',
@@ -104,7 +103,6 @@ const required: Record<string, string[]> = {
     'milestone',
     'activity',
     'activityName',
-    'activityBoqQty',
     'unit',
     'due',
     'owner',
@@ -387,7 +385,19 @@ async function handlePOST(req: Request, a: Actor) {
       return fail('Invalid payment mode.');
     for (const k of required[kind])
       if (!String(data[k]).trim()) return fail(k + ' is required');
+    // The approved activity BOQ quantity comes from the BOQ team. A new request may
+    // arrive without it; only the BOQ team, GM or Audit may change it afterwards.
+    if (['plan', 'request'].includes(kind)) {
+      if (old && !confidential(a)) data.activityBoqQty = old.activityBoqQty;
+      if (
+        data.activityBoqQty === '' ||
+        data.activityBoqQty == null ||
+        Number(data.activityBoqQty) === 0
+      )
+        delete data.activityBoqQty;
+    }
     for (const k of nums[kind]) {
+      if (k === 'activityBoqQty' && data[k] === undefined) continue;
       if (data[k] === '' || data[k] === null)
         return fail(k + ' is required (use zero where applicable)');
       data[k] = Number(data[k]);
@@ -471,7 +481,7 @@ async function handlePOST(req: Request, a: Actor) {
         return fail(
           'Activity must be a whole number, such as 4. Request sequence is assigned automatically.',
         );
-      if (data.activityBoqQty <= 0)
+      if (data.activityBoqQty !== undefined && data.activityBoqQty <= 0)
         return fail('Activity BOQ quantity must be greater than zero.');
       const all = (
           await db
@@ -497,6 +507,7 @@ async function handlePOST(req: Request, a: Actor) {
         .find((n) => Number.isFinite(n) && n > 0);
       if (
         established &&
+        data.activityBoqQty !== undefined &&
         Math.abs(established - data.activityBoqQty) > 0.000000001
       )
         return fail(
@@ -506,7 +517,8 @@ async function handlePOST(req: Request, a: Actor) {
             data.unit +
             '.',
         );
-      data.activityBoqQty = established || data.activityBoqQty;
+      if (established || data.activityBoqQty !== undefined)
+        data.activityBoqQty = established || data.activityBoqQty;
       data.requestBatchId =
         old?.requestBatchId || String(b.requestBatchId || crypto.randomUUID());
       const batchRow = sameActivity.find(
@@ -528,8 +540,10 @@ async function handlePOST(req: Request, a: Actor) {
           data.requestedQty || data.boqQty || data.qty || 0,
         ),
         cumulative = previousRequested + currentRequested,
-        excess = Math.max(0, cumulative - data.activityBoqQty);
-      data.quantityControl = {
+        excess = Math.max(0, cumulative - (data.activityBoqQty || 0));
+      // No approved quantity yet: the BOQ team enters it on review, and the check runs then.
+      if (!(data.activityBoqQty > 0)) delete data.quantityControl;
+      else data.quantityControl = {
         baseline: data.activityBoqQty,
         previousRequested,
         currentRequested,
@@ -540,7 +554,7 @@ async function handlePOST(req: Request, a: Actor) {
           ? (excess / data.activityBoqQty) * 100
           : 0,
       };
-      if (excess > 0) {
+      if (data.activityBoqQty > 0 && excess > 0) {
         const unchanged =
           old?.quantityControl &&
           Number(old.quantityControl.cumulative) === cumulative &&
@@ -575,6 +589,7 @@ async function handlePOST(req: Request, a: Actor) {
       !old &&
       ['plan', 'request'].includes(kind) &&
       data.rateSource === 'Project rate catalogue' &&
+      data.activityBoqQty > 0 &&
       data.gmApproval?.state !== 'Pending'
     ) {
       data.stage = 'BOQ priced';

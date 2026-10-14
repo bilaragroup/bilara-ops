@@ -105,3 +105,7 @@ Plumbing and electrical are bought against a cost budget per house, not item by 
 6. **Purchase** issues one lump-sum PO line (unit LS). Site GRN, bill check, Thursday payment and closure then work as for every other material.
 
 Site roles see vendor names but not prices or quote files. Tests: `node scripts/test-quotes.mjs`.
+
+## Approved activity BOQ quantity
+
+Project managers no longer enter it. The BOQ Team enters it when reviewing a request (it is required before BOQ can release the request). Later requests for the same project, milestone, activity, item and unit pick it up automatically, and the PM form shows how much is approved, already requested and left. Requests above what is left go to the GM. Tests: `node scripts/test-boq-quantity.mjs`.
