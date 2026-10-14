@@ -58,7 +58,7 @@ export async function protect(req:Request,cap:string,handler:(req:Request,a:Acto
   if(d.settings&&!confidential(a))d.settings=cleanSettings(d.settings);
   if(d.snapshots)d.snapshots=d.snapshots.filter((s:any)=>inProject(a,s.project));
   if(d.projectConfigs)d.projectConfigs=d.projectConfigs.filter((p:any)=>inProject(a,p.project));
-  if(d.documents)d.documents=d.documents.filter((x:any)=>inProject(a,x.project)&&(!x.confidential||confidential(a))&&(confidential(a)||x.recordIds.every((id:string)=>ids.has(id))));
+  if(d.documents)d.documents=d.documents.filter((x:any)=>inProject(a,x.project)&&(x.type!=='Vendor quote'||has(a,'Purchase Manager','Purchase Team','Accounts','GM','BOQ Team','Audit'))&&(!x.confidential||confidential(a))&&(confidential(a)||x.recordIds.every((id:string)=>ids.has(id))));
   return Response.json(d,{headers:{'Cache-Control':'private, no-store'}});
  }
  return res;

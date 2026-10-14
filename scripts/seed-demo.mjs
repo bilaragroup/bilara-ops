@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 // Demo data for learning the request → payment workflow on a LOCAL copy.
 //
 //   1. bash setup-local.sh        (once)
@@ -51,10 +52,45 @@ async function billCheck(buy,billNo,qty,rate,amount){const b=await get(buy.id);a
 async function pay(buy,mode,ref,receipt){const s=(await records()).find(x=>x.kind==='payment'&&x.parent===buy.id&&x.basis==='GRN');
  await call('accounts',{batchId:uuid(),paymentMode:mode,date:today,accountsBy:'Demo Accounts',reference:ref,payments:[{id:s.id,version:s.version,amount:(s.total-s.paid)/100}],...(receipt?{receiptId:receipt}:{})},P.acc);}
 
+// ---- plumbing & electrical: photo → quotes → BOQ → Audit → PO ----
+async function photo(file,project,window,recordId,email,reference,type='Site list',vendor='Plumbing'){
+ const form=new FormData();const png=readFileSync(new URL('./'+file,import.meta.url));
+ form.append('file',new File([png],file,{type:'image/png'}));form.append('metadata',JSON.stringify({project,window,type,vendor,uploadedBy:'Demo data',reference,recordIds:[recordId]}));
+ return (await call('documents',null,email,form)).id;
+}
+async function seedQuotes(){
+ if((await records()).some(r=>r.kind==='quote'&&['901','902'].includes(r.project))){console.log('  · Plumbing & electrical demo already loaded');return;}
+ const qv=async id=>(await get(id)).version;const q=(id,body,email)=>call('quotes',{id,...body},email);
+ for(const [project,trade,amount] of [['901','Plumbing',250000],['901','Electrical',180000],['902','Plumbing',220000],['902','Electrical',160000]])
+  await call('quotes',{action:'budget',project,trade,amount,note:'Per-house estimate',version:(await records()).find(r=>r.kind==='budget'&&r.sourceId===`budget:${project}:${trade}`)?.version||0},P.boq);
+ const need=add(W,2);
+ // 902 electrical: just uploaded by the site; Purchase's turn.
+ const e=await call('quotes',{action:'create',project:'902',trade:'Electrical',neededBy:need,activity:'Ground floor wiring',note:'Client wants Havells switches'},P.se2);
+ await photo('demo-electrical-list.png','902',e.window,e.id,P.se2,'GF wiring list','Site list','Electrical');
+ // 901 plumbing: three quotes, with BOQ to choose.
+ const pl=await call('quotes',{action:'create',project:'901',trade:'Plumbing',neededBy:need,activity:'First floor bathrooms',note:'Plumber Shaji\'s list'},P.se1);
+ await photo('demo-plumbing-list.png','901',pl.window,pl.id,P.se1,'FF bathroom list');
+ await q(pl.id,{action:'typedList',version:await qv(pl.id),lines:[{item:'CPVC pipe SDR-11',size:'3/4"',qty:36,unit:'MTR'},{item:'CPVC elbow',size:'3/4"',qty:18,unit:'NOS'},{item:'CPVC tee',size:'3/4"',qty:8,unit:'NOS'},{item:'CPVC brass elbow',size:'3/4 x 1/2"',qty:24,unit:'NOS'},{item:'CPVC pipe SDR-11',size:'1"',qty:12,unit:'MTR'},{item:'Ball valve',size:'1"',qty:12,unit:'NOS'},{item:'SWR pipe',size:'4"',qty:15,unit:'MTR'},{item:'SWR door tee',size:'4"',qty:3,unit:'NOS'},{item:'Air cowl',size:'2"',qty:9,unit:'NOS'},{item:'Concealed diverter body (Jaquar)',size:'',qty:3,unit:'NOS'},{item:'Concealed cistern with frame',size:'',qty:3,unit:'NOS'},{item:'Teflon tape',size:'10 m',qty:20,unit:'NOS'},{item:'Solvent cement',size:'100 ml',qty:8,unit:'NOS'}]},P.buy);
+ await q(pl.id,{action:'addQuote',version:await qv(pl.id),vendor:'Local Pipes & Fittings',phone:'98470 11111',amount:61200,brands:'Local CPVC, unbranded cistern',creditDays:0,notes:'No ISI mark on pipes'},P.buy);
+ await q(pl.id,{action:'addQuote',version:await qv(pl.id),vendor:'Kollamkudiyil Agencies',phone:'95447 17661',amount:69563,brands:'Supreme ISI pipes, Jaquar diverter',reference:'B 2562',creditDays:7},P.buy);
+ await q(pl.id,{action:'addQuote',version:await qv(pl.id),vendor:'Premium Sanitary House',phone:'98470 22222',amount:84900,brands:'Ashirvad pipes, Kohler cistern',creditDays:10},P.buy);
+ await q(pl.id,{action:'sendToBoq',version:await qv(pl.id)},P.buy);
+ // 902 plumbing: BOQ chose a better brand, Audit approved; Purchase can issue the PO.
+ const p2=await call('quotes',{action:'create',project:'902',trade:'Plumbing',neededBy:need,activity:'Kitchen and utility',note:''},P.se2);
+ await photo('demo-plumbing-list.png','902',p2.window,p2.id,P.se2,'Kitchen list');
+ await q(p2.id,{action:'addQuote',version:await qv(p2.id),vendor:'Aluva Pipe House',amount:38500,brands:'Finolex pipes',creditDays:0},P.buy);
+ await q(p2.id,{action:'addQuote',version:await qv(p2.id),vendor:'Kollamkudiyil Agencies',amount:41200,brands:'Supreme pipes, Jaquar taps',creditDays:7},P.buy);
+ await q(p2.id,{action:'sendToBoq',version:await qv(p2.id)},P.buy);
+ const chosen=(await get(p2.id)).quotes.find(x=>x.vendor==='Kollamkudiyil Agencies');
+ await q(p2.id,{action:'select',version:await qv(p2.id),quoteId:chosen.id,reason:'Jaquar taps as per client spec; only ₹2,700 more and 7 days credit'},P.boq);
+ await q(p2.id,{action:'audit',version:await qv(p2.id),decision:'Approved',note:'Within budget'},P.audit);
+ done('Plumbing & electrical: budgets set; one list waiting for quotes, one with BOQ to choose, one approved and ready for PO');
+}
+
 const steps=[];const done=(label)=>{steps.push(label);console.log('  ✓ '+label);};
 try{
  const existing=(await call('projects')).projects||[];
- if(existing.some(p=>['901','902'].includes(p.project))&&(await records()).some(r=>['901','902'].includes(r.project))){console.log('Demo data is already loaded (projects 901 and 902). Open http://localhost:3000 and pick week '+W+'.');process.exit(0);}
+ if(existing.some(p=>['901','902'].includes(p.project))&&(await records()).some(r=>['901','902'].includes(r.project))){console.log('Demo data is already loaded (projects 901 and 902).');await seedQuotes();console.log('Open http://localhost:3000.');process.exit(0);}
  console.log(`Loading demo data into ${BASE} for the execution week starting Thursday ${W}…`);
  const users=(await call('users')).users||[];
  for(const [email,name,roles] of people)if(!users.some(u=>u.email===email))await call('users',{email,name,roles,projects:[],active:1,version:0});
@@ -118,6 +154,8 @@ try{
  await audit(shut,'Rejected','Far above BOQ. Use company shuttering stock instead.');
  done('Step 8 · Rejected by Audit (Shuttering Items)');
 
+ await seedQuotes();
+
  const pays=(await records()).filter(r=>r.kind==='payment'&&r.status!=='Cancelled'&&['901','902'].includes(r.project));
  const payWeeks=pays.map(r=>`  ${r.item}: due ${r.due} → Payment forecast week ${r.window}${r.paid>=r.total?' (paid)':''}${r.basis==='GRN'?' · for goods received':' · forecast for goods still to come'}`).join('\n');
  console.log(`\nPayments:\n${payWeeks}`);
@@ -131,5 +169,6 @@ Use "Testing as" (bottom-left) to switch between the demo people:
   Demo SE (Sandeep / Arun)→ Receive goods (GRN)
   Demo Audit (Rijila)     → Audit review: savings, approve / send back
   Demo Accounts (Gokul)   → Payment forecast: check bills, record payment
+  Plumbing & electrical   → SE uploads a list photo, Purchase adds quotes, BOQ chooses, Audit approves
 Demo projects are 901 and 902; your own projects are not touched.`);
 }catch(e){console.error('\nDemo data stopped: '+e.message+'\nSteps completed: '+steps.length);process.exit(1);}

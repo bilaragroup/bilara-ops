@@ -13,6 +13,7 @@ import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
 import PeriodPicker from './period-picker';
 import ReceiveGoods from './receive-goods';
+import QuoteRequests from './quotes';
 import BillCheck from './bill-check';
 import AuditReview from './audit-review';
 import RescheduleRequest from './reschedule-request';
@@ -1106,6 +1107,7 @@ export default function Control({ user, testUserSwitch }: any) {
               ['weekly', 'Dashboard', Wallet],
               ['plan', 'Purchase requests', ClipboardList],
               ['request', 'Ad hoc requests', ClipboardList],
+              ['quotes', 'Plumbing & electrical', ClipboardList],
               ['purchase-plan', 'Purchase plan', Wallet],
               ['audit', 'Audit review', ShieldCheck],
               ['orders', 'Purchase orders', PackageCheck],
@@ -1123,6 +1125,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     has(user)) &&
                   (v !== 'purchase-plan' || canPurchase || canPrivate) &&
                   (v !== 'audit' || has(user, 'Audit', 'GM')) &&
+                  (v !== 'quotes' || !user.roles.every((x: string) => x === 'QC' || x === 'Accounts')) &&
                   (v !== 'grn' ||
                     has(user, 'Site Engineer', 'Project Manager', 'Purchase Manager', 'Purchase Team')),
               )
@@ -1156,6 +1159,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     'purchase-plan': 'Purchase plan',
                     audit: 'Audit review',
                     grn: 'Receive goods (GRN)',
+                    quotes: 'Plumbing & electrical',
                     projects: 'Projects',
                     users: 'Users & roles',
                     settings: 'Settings',
@@ -1279,6 +1283,17 @@ export default function Control({ user, testUserSwitch }: any) {
               window={window}
               refresh={refresh}
               openRecord={setSelected}
+            />
+          </TabsContent>
+          <TabsContent value="quotes">
+            <QuoteRequests
+              records={records}
+              documents={documents}
+              projects={projectConfigs}
+              project={project}
+              period={period}
+              user={user}
+              refresh={refresh}
             />
           </TabsContent>
           <TabsContent value="grn">

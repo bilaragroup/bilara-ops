@@ -10,7 +10,7 @@ async function handlePOST(req:Request,a:Actor){try{
  const text=await req.text();if(text.length>12000)return fail('Request too large');const b=JSON.parse(text);const db=database();
  const snapshot=await db.batch([db.prepare('SELECT * FROM records ORDER BY id'),db.prepare('SELECT * FROM documents')]);
  const records=snapshot[0].results.map(decode),docs=snapshot[1].results.map(decodeDocument),r=records.find(x=>x.id===b.id);
- if(!r||!['plan','request'].includes(r.kind))return fail('Choose a purchase request');if(r.version!==b.version)return fail('Request changed. Refresh and retry.',409);
+ if(!r||!['plan','request','quote'].includes(r.kind))return fail('Choose a purchase request');if(r.version!==b.version)return fail('Request changed. Refresh and retry.',409);
  const by=String(b.by||'').trim(),reason=String(b.reason||'').trim();if(!by||by.length>200||!reason||reason.length>2000)return fail('Enter your name and a reason / completion note.');
  const now=new Date().toISOString();const data=JSON.parse((snapshot[0].results.find((x:any)=>x.id===r.id) as any).data);
  if(b.action==='reopen'){if(r.closure?.state!=='Closed')return fail('Request is already open');data.closure={state:'Open',reopenedBy:by,reopenedAt:now,reason,previous:r.closure};}
