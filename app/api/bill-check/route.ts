@@ -3,7 +3,7 @@ import {Actor,has,inProject,visible} from '@/lib/permissions';
 import {database,decode} from '@/lib/database';
 import {cents,dateValid} from '@/lib/calculations';
 import {indiaToday} from '@/lib/weekly';
-import {acceptedQty,acceptedValue,billIssues,billStatus,bills} from '@/lib/grn';
+import {acceptedQty,acceptedValue,billIssues,billStatus,billedQty,bills} from '@/lib/grn';
 
 // The vendor's bill, checked line by line against the PO and the GRN.
 //  action 'add' (Accounts or Purchase): bill number, date, quantity, rate, amount for one PO line.
@@ -36,6 +36,8 @@ async function handlePOST(req:Request,a:Actor){try{
   if(!(qty>0)||!(rate>=0)||!(amount>0))return fail('Enter the billed quantity, rate and total amount.');
   const dup=(await db.prepare("SELECT data FROM records WHERE kind='purchase'").all()).results.some((r:any)=>{const d=JSON.parse(r.data);return String(d.vendor||'').trim().toLowerCase()===String(p.vendor).trim().toLowerCase()&&(d.bills||[]).some((x:any)=>String(x.billNo).trim().toLowerCase()===billNo.toLowerCase());});
   if(dup)return fail(`Bill ${billNo} from ${p.vendor} is already entered.`,409);
+  // A bill covers goods already received. Once every accepted unit is billed, a new bill only comes with the next delivery.
+  if(billedQty(p)>=acceptedQty(p)-0.0000001)return fail(`Everything received on ${p.po||'this PO'} is already billed. Record the next GRN before adding another bill.`);
   const bill:any={billNo,billDate,qty,rate,amount,documentId:String(b.documentId||'')||undefined,by:a.name,email:a.email,at:now};
   data.bills=[...bills(p),bill];
   const after={...p,bills:data.bills,billApproval:undefined};

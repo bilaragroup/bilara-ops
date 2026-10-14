@@ -24,7 +24,7 @@ function Row({p,user,refresh}:any){
    <div className="nw"><small>Accepted at site</small>{q(acc)} {p.unit} · {money(acceptedValue(p))}</div>
    <div className="nw"><small>Billed</small>{bills(p).length?`${q(billedQty(p))} ${p.unit} · ${money(billedAmount(p))}`:'—'}</div>
    <div><span className={'tag '+tone[st]}>{st==='Approved'?'Approved by '+(p.billApproval?.by||'GM/Audit'):st}</span></div>
-   <div className="bill-actions">{canEnter&&<button className="secondary" onClick={()=>setOpen(!open)}>{bills(p).length?'Add bill':'Enter bill'}</button>}</div>
+   <div className="bill-actions">{canEnter&&left>0&&<button className="secondary" onClick={()=>setOpen(!open)}>{bills(p).length?`Add bill for ${left} ${p.unit} not yet billed`:'Enter bill'}</button>}</div>
   </div>
   {bills(p).map((b:any)=><small key={b.billNo} className="bill-line">Bill {b.billNo} · {b.billDate} · {b.qty} {p.unit} @ ₹{b.rate} · {money(b.amount)} · {b.by}</small>)}
   {st==='Mismatch'&&<ul className="bill-issues">{issues.map((i:string)=><li key={i}>{i}</li>)}</ul>}

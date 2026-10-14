@@ -86,7 +86,8 @@ try{
  await ok('bill-check',{id:sand.po,version:(await row(sand.po)).version,action:'add',billNo:'PC-9',billDate:today,qty:100,rate:50,amount:5000},ACC);
  assert.equal((await row(sand.po)).billStatus,'Matched');
  assert.equal((await pay(sg.id,3000)).status,200);
- pass('advance of ₹2,000 is used first: the GRN schedules only ₹3,000 more, due the same day (no credit); matching bill is paid');
+ r=await bill(sand.po,{billNo:'PC-10',billDate:today,qty:1,rate:50,amount:50});assert.equal(r.status,400);assert.match(r.data.error,/already billed/);
+ pass('advance of ₹2,000 is used first: the GRN schedules only ₹3,000 more, due the same day (no credit); matching bill is paid; no second bill once everything received is billed');
 
  // Purchase cannot change delivery status or a GRN payment through the edit form.
  p=await row(sand.po);await ok('records',{id:sand.po,version:p.version,status:'Not delivered',notes:'edit'},BUY);assert.equal((await row(sand.po)).status,'Delivered');
