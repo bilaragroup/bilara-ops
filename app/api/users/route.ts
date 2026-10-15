@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       !name ||
       name.length > 100 ||
       !Array.isArray(b.roles) ||
-      !b.roles.length ||
+      b.roles.length !== 1 ||
       b.roles.some((r: any) => !roles.includes(r)) ||
       !Array.isArray(b.projects) ||
       b.projects.some((p: any) => !/^[1-9][0-9]{2}$/.test(p)) ||
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
       !Number.isInteger(b.version) ||
       b.version < 0
     )
-      return fail('Enter a name, email, valid roles and project numbers.');
+      return fail('Enter a name, email, exactly one role and valid project numbers.');
     if (email === a.email && (!b.active || !b.roles.includes('Super Admin')))
       return fail('You cannot remove your own Super Admin access.');
     const db = database(),

@@ -273,21 +273,15 @@ export default function Users() {
               )}
             </div>
             <fieldset className="role-choices">
-              <legend>Roles</legend>
+              <legend>Role (one per person)</legend>
               {roles.map((role) => (
                 <label key={role}>
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="user-role"
                     disabled={viewOnly}
-                    checked={draft.roles.includes(role)}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        roles: e.target.checked
-                          ? [...draft.roles, role]
-                          : draft.roles.filter((x: string) => x !== role),
-                      })
-                    }
+                    checked={draft.roles.length === 1 && draft.roles[0] === role}
+                    onChange={() => setDraft({ ...draft, roles: [role] })}
                   />
                   {role}
                 </label>

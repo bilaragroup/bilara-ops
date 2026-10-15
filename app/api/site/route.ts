@@ -1,0 +1,113 @@
+// One endpoint for the site pages (Site Engineer, PM, QC, GM, Purchase), like the QC app's
+// apiCall(action, args): POST {action, args:[...]} or GET ?action=...&projectId=...
+// Sign-in is the purchasing app's; each person has one role, mapped to the site role.
+import {actor, AccessError} from '@/lib/access';
+import type {Actor} from '@/lib/permissions';
+import {Site, SiteError, SiteUser, runSiteAction, siteRole, clientSafe, formatDate, uuid} from '@/lib/site/core';
+import {getProjectsForUser, getSiteOperationsProjectsForUser} from '@/lib/site/access';
+import * as M from '@/lib/site/materials';
+import * as G from '@/lib/site/grn';
+import * as P from '@/lib/site/purchase-view';
+
+const BUILD = 'site-ops-2026.10.15';
+
+type Handler = (s: Site, a: Actor, args: any[]) => Promise<any>;
+const READ_ONLY = new Set(['bootstrap', 'getMaterialInventoryWorkspace', 'getReceiveGoodsWorkspace', 'getGrnItemMaster', 'getSitePurchaseWorkspace']);
+
+const ACTIONS: Record<string, Handler> = {
+  bootstrap: async (s) => {
+    const user = s.currentUser();
+    return clientSafe({
+      systemName: await s.config('SYSTEM_NAME'), build: BUILD, user,
+      projects: await getProjectsForUser(s, user), siteOperationProjects: await getSiteOperationsProjectsForUser(s, user),
+      today: s.todayKey(), assignments: [],
+    });
+  },
+  // Site stock (Site Materials)
+  getMaterialInventoryWorkspace: (s, _a, x) => M.getMaterialInventoryWorkspace(s, x[0]),
+  recordMaterialReceipt: (s, _a, x) => M.recordMaterialReceipt(s, x[0]),
+  recordMaterialGin: (s, _a, x) => M.recordMaterialGin(s, x[0]),
+  recordSiteAssetSnapshot: (s, _a, x) => M.recordSiteAssetSnapshot(s, x[0]),
+  recordDailySteelWastage: (s, _a, x) => M.recordDailySteelWastage(s, x[0]),
+  recordDailyMaterialWastage: (s, _a, x) => M.recordDailyMaterialWastage(s, x[0]),
+  saveMaterialThresholds: (s, _a, x) => M.saveMaterialThresholds(s, x[0]),
+  recordInitialSiteStock: (s, _a, x) => M.recordInitialSiteStock(s, x[0]),
+  reconcileMaterialBalance: (s, _a, x) => M.reconcileMaterialBalance(s, x[0]),
+  auditAndRepairMaterialInventory: (s) => M.auditAndRepairMaterialInventory(s),
+  // The Purchase workbook copy is live now, so there is nothing to schedule.
+  schedulePurchaseMaterialMirrorSync: async (s) => { s.requireRole(['SITE_ENGINEER', 'ADMIN']); return {status: 'SYNCED'}; },
+  // Goods received against purchase orders
+  getReceiveGoodsWorkspace: (s, a, x) => G.getReceiveGoodsWorkspace(s, a, x[0]),
+  receivePurchaseOrder: (s, a, x) => G.receivePurchaseOrder(s, a, x[0]),
+  linkGrnToPo: (s, a, x) => G.linkGrnToPo(s, a, x[0]),
+  // Purchase: item master and the site purchase view
+  getGrnItemMaster: (s) => M.getGrnItemMaster(s),
+  saveGrnItemMaster: (s, _a, x) => M.saveGrnItemMaster(s, x[0]),
+  getSitePurchaseWorkspace: (s, _a, x) => P.getSitePurchaseWorkspace(s, x[0] || {}),
+  saveGrnFollowup: (s, _a, x) => P.saveGrnFollowup(s, x[0]),
+};
+
+export function siteUserOf(a: Actor): SiteUser {
+  return {email: a.email, name: a.name, role: siteRole(a.roles), allowedProjects: a.projects.length ? a.projects.join(',') : 'ALL'};
+}
+
+const VALIDATION_MESSAGES: Record<string, string> = {
+  saveDprPlan: 'The daily target could not be saved. No target was confirmed. Refresh Daily Targets and try again.',
+  saveDprMorning: 'The morning site update could not be saved. Refresh the Daily DPR and try again.',
+  saveDprEvening: 'The end-of-day DPR could not be submitted. Your entered values remain on this page; refresh and submit again.',
+};
+
+/** friendlyApplicationError_: log the technical detail, show the person a reference. */
+async function logError(user: SiteUser | null, action: string, error: any, args: any[]): Promise<string> {
+  const technical = String(error?.message || error || 'Unknown error');
+  const id = 'ERR-' + formatDate(new Date(), 'yyyyMMdd-HHmmss') + '-' + uuid().slice(0, 6).toUpperCase();
+  const userMessage = 'Bilara could not complete this action because of an internal system error. Refresh the page and try once more. If it happens again, send the reference below to Admin; your technical details have already been logged.';
+  try {
+    await runSiteAction(null, 'logError', async (s) => {
+      const payload = (args && args[0]) || {};
+      await s.append('Application_Error_Log', {
+        Error_ID: id, Occurred_At: s.now(), User_Email: user?.email || '', User_Role: user?.role || '', Action: action,
+        Project_ID: String(payload.projectId || ''), Work_Date: String(payload.workDate || ''), User_Message: VALIDATION_MESSAGES[action] || userMessage,
+        Technical_Message: technical, Stack_Trace: String(error?.stack || '').slice(0, 20000), Build: BUILD, Status: 'OPEN',
+      });
+    });
+  } catch (logFailure) {
+    console.error(JSON.stringify({event: 'site_error_log_failed', action, message: String(logFailure)}));
+  }
+  return (VALIDATION_MESSAGES[action] || userMessage) + ' Reference: ' + id;
+}
+
+async function handle(req: Request, action: string, args: any[]) {
+  let user: SiteUser | null = null;
+  try {
+    const local = new URL(req.url).hostname === 'localhost' && req.headers.get('x-bilara-test-strict') !== '1';
+    const a = await actor(req.headers, local);
+    user = siteUserOf(a);
+    if (!user.role) return Response.json({error: 'Your role does not use the site pages.'}, {status: 403});
+    const fn = ACTIONS[action];
+    if (!fn) return Response.json({error: 'Unsupported application action.'}, {status: 400});
+    if (req.method === 'GET' && !READ_ONLY.has(action)) return Response.json({error: 'Use POST for this action.'}, {status: 405});
+    const clock = local && req.headers.get('x-bilara-test-now') ? () => new Date(String(req.headers.get('x-bilara-test-now'))) : undefined;
+    const value = await runSiteAction(user, action, (s) => fn(s, a, args), {clock});
+    return Response.json({value: value ?? null}, {headers: {'Cache-Control': 'private, no-store'}});
+  } catch (e) {
+    if (e instanceof AccessError) return Response.json({error: e.message}, {status: e.status});
+    if (e instanceof SiteError || (e as any)?.name === 'BilaraUserError') return Response.json({error: (e as Error).message}, {status: 400});
+    return Response.json({error: await logError(user, action, e, args)}, {status: 500});
+  }
+}
+
+export async function GET(req: Request) {
+  const q = new URL(req.url).searchParams;
+  const args = q.get('args') ? JSON.parse(String(q.get('args'))) : [q.get('projectId') ?? undefined];
+  return handle(req, String(q.get('action') || ''), Array.isArray(args) ? args : [args]);
+}
+
+export async function POST(req: Request) {
+  if (req.headers.get('origin') && req.headers.get('origin') !== new URL(req.url).origin) return Response.json({error: 'Origin not allowed.'}, {status: 403});
+  const text = await req.text();
+  if (text.length > 30 * 1024 * 1024) return Response.json({error: 'Request too large.'}, {status: 413});
+  let b: any;
+  try { b = JSON.parse(text); } catch { return Response.json({error: 'Enter valid JSON.'}, {status: 400}); }
+  return handle(req, String(b?.action || ''), Array.isArray(b?.args) ? b.args : []);
+}
