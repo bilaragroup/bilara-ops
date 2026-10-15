@@ -13,14 +13,15 @@ import * as L from '@/lib/site/labour';
 import * as T from '@/lib/site/attendance';
 import * as O from '@/lib/site/ops';
 import * as B from '@/lib/site/dashboard';
-import {assertProjectArchiveAccess} from '@/lib/site/access';
+import * as Q from '@/lib/site/qc';
+import {assertProjectArchiveAccess, assertProjectAccess} from '@/lib/site/access';
 import {listFiles} from '@/lib/site/files';
 import {documentStorage} from '@/lib/documents';
 
 const BUILD = 'site-ops-2026.10.15';
 
 type Handler = (s: Site, a: Actor, args: any[]) => Promise<any>;
-const READ_ONLY = new Set(['bootstrap', 'getMaterialInventoryWorkspace', 'getReceiveGoodsWorkspace', 'getGrnItemMaster', 'getSitePurchaseWorkspace', 'getDprWorkspace', 'listSiteFiles', 'getOperationsDashboard', 'getLaborPayablesWorkspace', 'getLaborRecords', 'getAdminAttendanceWorkspace', 'getDprComplianceWorkspace', 'getEmailSchedule']);
+const READ_ONLY = new Set(['bootstrap', 'getMaterialInventoryWorkspace', 'getReceiveGoodsWorkspace', 'getGrnItemMaster', 'getSitePurchaseWorkspace', 'getDprWorkspace', 'listSiteFiles', 'getOperationsDashboard', 'getLaborPayablesWorkspace', 'getLaborRecords', 'getAdminAttendanceWorkspace', 'getDprComplianceWorkspace', 'getEmailSchedule', 'getPmWorkspace', 'getPmChecklistRegister', 'getPmChecklistRecord', 'getReinspectionBookingContext', 'getTemplateItems', 'getChecklistForEditing', 'getSchedulingWorkspace', 'getBookingForEditing', 'getTemplateLibrary']);
 
 const ACTIONS: Record<string, Handler> = {
   bootstrap: async (s) => {
@@ -28,7 +29,7 @@ const ACTIONS: Record<string, Handler> = {
     return clientSafe({
       systemName: await s.config('SYSTEM_NAME'), build: BUILD, user,
       projects: await getProjectsForUser(s, user), siteOperationProjects: await getSiteOperationsProjectsForUser(s, user),
-      today: s.todayKey(), assignments: [],
+      today: s.todayKey(), assignments: user.role === 'QC' || user.role === 'ADMIN' ? await Q.getAssignments(s, user) : [],
     });
   },
   // Site stock (Site Materials)
@@ -62,6 +63,35 @@ const ACTIONS: Record<string, Handler> = {
   scheduleDprPostCommitTrigger: (s) => D.scheduleDprPostCommitTrigger(s),
   requestDprResubmission: (s, _a, x) => D.requestDprResubmission(s, x[0]),
   approveDprResubmission: (s, _a, x) => D.approveDprResubmission(s, x[0]),
+  // QC checklists (PM pages), QC calendar and inspections (QC pages)
+  getPmWorkspace: (s, _a, x) => Q.getPmWorkspace(s, x[0]),
+  getPmChecklistRegister: (s) => Q.getPmChecklistRegister(s),
+  getPmChecklistRecord: (s, _a, x) => Q.getPmChecklistRecord(s, x[0]),
+  getReinspectionBookingContext: (s, _a, x) => Q.getReinspectionBookingContext(s, x[0]),
+  getTemplateItems: (s, _a, x) => Q.getTemplateItems(s, x[0]),
+  getChecklistForEditing: (s, _a, x) => Q.getChecklistForEditing(s, x[0]),
+  saveProjectChecklistDraft: (s, _a, x) => Q.saveProjectChecklistDraft(s, x[0]),
+  saveAndPublishProjectChecklist: (s, _a, x) => Q.saveAndPublishProjectChecklist(s, x[0]),
+  publishProjectChecklist: (s, _a, x) => Q.publishProjectChecklist(s, x[0]),
+  updatePublishedChecklist: (s, _a, x) => Q.updatePublishedChecklist(s, x[0]),
+  deleteProjectChecklist: (s, _a, x) => Q.deleteProjectChecklist(s, x[0]),
+  getTemplateLibrary: (s) => Q.getTemplateLibrary(s),
+  saveTemplateLibrary: (s, _a, x) => Q.saveTemplateLibrary(s, x[0]),
+  syncTemplateLibrary: (s, _a, x) => Q.saveTemplateLibrary(s, x[0]),
+  saveDrawingRecord: (s, _a, x) => Q.saveDrawingRecord(s, x[0]),
+  getSchedulingWorkspace: (s, _a, x) => Q.getSchedulingWorkspace(s, x[0], x[1]),
+  createQcBooking: (s, _a, x) => Q.createQcBooking(s, x[0]),
+  cancelQcBooking: (s, _a, x) => Q.cancelQcBooking(s, x[0]),
+  updateQcBooking: (s, _a, x) => Q.updateQcBooking(s, x[0]),
+  getBookingForEditing: (s, _a, x) => Q.getBookingForEditing(s, x[0]),
+  respondToQcBooking: (s, _a, x) => Q.respondToQcBooking(s, x[0]),
+  addQcUnavailability: (s, _a, x) => Q.addQcUnavailability(s, x[0]),
+  createReinspectionBooking: (s, _a, x) => Q.createReinspectionBooking(s, x[0]),
+  getInspectionForExecution: (s, _a, x) => Q.getInspectionForExecution(s, x[0], x[1], x[2]),
+  uploadQcEvidence: (s, _a, x) => Q.uploadQcEvidence(s, x[0]),
+  submitInspection: (s, _a, x) => Q.submitInspection(s, x[0]),
+  uploadInspectionPhotoBatch: (s, _a, x) => Q.uploadInspectionPhotoBatch(s, x[0]),
+  finalizeInspectionEvidence: (s, _a, x) => Q.finalizeInspectionEvidence(s, x[0]),
   // GM / management pages (dashboard, labour payables and records, QC office attendance, DPR compliance)
   getOperationsDashboard: (s, _a, x) => B.getOperationsDashboard(s, x[0] || {}),
   getLaborPayablesWorkspace: (s, _a, x) => L.getLaborPayablesWorkspace(s, x[0] || {}),
@@ -86,7 +116,10 @@ const ACTIONS: Record<string, Handler> = {
 async function checkFileAccess(s: Site, key: string) {
   const m = /^site\/([^/]+)\//.exec(key);
   if (!m || key.includes('..')) throw new SiteError('File not found.');
-  await assertProjectArchiveAccess(s, s.currentUser(), m[1]);
+  const user = s.currentUser();
+  // A QC engineer opens the inspection files of projects they were booked on.
+  if (user.role === 'QC' && /^site\/[^/]+\/qc\//.test(key)) { await assertProjectAccess(s, user, m[1]); return; }
+  await assertProjectArchiveAccess(s, user, m[1]);
 }
 
 export function siteUserOf(a: Actor): SiteUser {

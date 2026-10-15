@@ -184,7 +184,7 @@ export function siteRole(roles: string[]): string {
 
 // ---------- the per-request context ----------
 
-type Op = {kind: 'insert'; table: string; row: Row} | {kind: 'update'; table: string; row: number; changes: Row} | {kind: 'prop'; key: string; value: string};
+type Op = {kind: 'insert'; table: string; row: Row} | {kind: 'update'; table: string; row: number; changes: Row} | {kind: 'delete'; table: string; row: number} | {kind: 'prop'; key: string; value: string};
 
 function toStored(v: any): any {
   if (v === undefined || v === null) return '';
@@ -400,6 +400,17 @@ export class Site {
     return rows.length;
   }
 
+  /** Remove matching rows (sh.deleteRow in the QC app, used for draft checklist items). */
+  async deleteWhere(table: string, predicate: (r: Row) => boolean): Promise<number> {
+    const rows = await this.rows(table);
+    const doomed = rows.filter(predicate);
+    for (const r of doomed) {
+      rows.splice(rows.indexOf(r), 1);
+      this.ops.push({kind: 'delete', table, row: Number(r._row)});
+    }
+    return doomed.length;
+  }
+
   // ----- script properties -----
 
   async property(key: string): Promise<string | null> {
@@ -466,6 +477,8 @@ export class Site {
         const keys = Object.keys(op.changes);
         st.push(db.prepare(`UPDATE ${tableName(op.table)} SET ${keys.map((k) => col(k) + '=?').join(',')} WHERE _row=?` + guard)
           .bind(...keys.map((k) => op.changes[k]), op.row, marker));
+      } else if (op.kind === 'delete') {
+        st.push(db.prepare(`DELETE FROM ${tableName(op.table)} WHERE _row=?` + guard).bind(op.row, marker));
       } else {
         st.push(db.prepare('INSERT INTO site_properties (key,value) SELECT ?,? WHERE EXISTS (SELECT 1 FROM site_commits WHERE id=?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
           .bind(op.key, op.value, marker));
