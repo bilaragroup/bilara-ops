@@ -13,6 +13,9 @@ import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
 import PeriodPicker from './period-picker';
 import ReceiveGoods from './receive-goods';
+import SiteDpr from './site-dpr';
+import SiteStock from './site-stock';
+import { siteCall, siteRoleOf } from '@/lib/site-client';
 import QuoteRequests from './quotes';
 import BillCheck from './bill-check';
 import AuditReview from './audit-review';
@@ -79,6 +82,8 @@ import {
   PackageCheck,
   Building2,
   UserCog,
+  HardHat,
+  Boxes,
 } from 'lucide-react';
 import {
   Entry,
@@ -436,6 +441,20 @@ export default function Control({ user, testUserSwitch }: any) {
   useEffect(() => {
     refresh();
   }, []);
+  // Site operations (from the QC app): who this person is on site and which projects they see.
+  const siteRole = siteRoleOf(user.roles);
+  const [siteBoot, setSiteBoot] = useState<any>(null);
+  useEffect(() => {
+    if (!siteRole || ['HR', 'CONTRACTOR'].includes(siteRole)) return;
+    siteCall('bootstrap')
+      .then((b) => {
+        setSiteBoot(b);
+        // A Site Engineer's day starts on the Daily DPR.
+        if (siteRole === 'SITE_ENGINEER') setTab((t) => (t === 'weekly' ? 'site-dpr' : t));
+      })
+      .catch(() => setSiteBoot({ user: { role: siteRole }, projects: [], siteOperationProjects: [] }));
+  }, [siteRole]);
+  const siteTabs = ['site-dpr', 'site-stock'];
   function changeTab(v: string) {
     setTab(v);
     setQuery('');
@@ -1161,7 +1180,9 @@ export default function Control({ user, testUserSwitch }: any) {
               ['purchase-plan', 'Purchase plan', Wallet],
               ['audit', 'Audit review', ShieldCheck],
               ['orders', 'Purchase orders', PackageCheck],
+              ['site-dpr', siteRole === 'PM' ? 'Daily targets' : 'Daily DPR', HardHat],
               ['grn', 'Receive goods (GRN)', PackageCheck],
+              ['site-stock', 'Site stock', Boxes],
               ['payment', 'Payment forecast', Wallet],
               ['documents', 'Documents', ClipboardList],
               ['backup', 'Backups', Download],
@@ -1169,6 +1190,8 @@ export default function Control({ user, testUserSwitch }: any) {
               ['users', 'Users & roles', UserCog],
               ['settings', 'Settings', ShieldCheck],
             ]
+              // A Site Engineer works mostly on site pages: show them first.
+              .sort((x: any, y: any) => siteRole === 'SITE_ENGINEER' ? Number(['site-dpr', 'grn', 'site-stock'].includes(String(y[0]))) - Number(['site-dpr', 'grn', 'site-stock'].includes(String(x[0]))) : 0)
               .filter(
                 ([v]) =>
                   (!['projects', 'users', 'settings'].includes(String(v)) ||
@@ -1176,7 +1199,8 @@ export default function Control({ user, testUserSwitch }: any) {
                   (v !== 'purchase-plan' || canPurchase || canPrivate) &&
                   (v !== 'audit' || has(user, 'Audit', 'GM')) &&
                   (v !== 'grn' ||
-                    has(user, 'Site Engineer', 'Project Manager', 'Purchase Manager', 'Purchase Team')),
+                    has(user, 'Site Engineer', 'QC', 'Project Manager', 'Purchase Manager', 'Purchase Team')) &&
+                  (!siteTabs.includes(String(v)) || ['PM', 'SITE_ENGINEER', 'QC', 'GM', 'ADMIN'].includes(siteRole)),
               )
               .map(([v, label, Icon]: any) => (
                 <TabsTrigger key={v} value={v}>
@@ -1208,6 +1232,8 @@ export default function Control({ user, testUserSwitch }: any) {
                     'purchase-plan': 'Purchase plan',
                     audit: 'Audit review',
                     grn: 'Receive goods (GRN)',
+                    'site-dpr': siteRole === 'PM' ? 'Daily targets' : 'Daily DPR',
+                    'site-stock': 'Site stock',
                     quotes: 'Plumbing & electrical',
                     projects: 'Projects',
                     users: 'Users & roles',
@@ -1250,7 +1276,7 @@ export default function Control({ user, testUserSwitch }: any) {
               <button onClick={() => setNotice('')}>Dismiss</button>
             </div>
           )}
-          {!['settings', 'projects', 'users'].includes(tab) && (
+          {!['settings', 'projects', 'users', ...siteTabs].includes(tab) && (
             <div className="context-bar">
               <label className="field">
                 <span>Project</span>
@@ -1353,7 +1379,14 @@ export default function Control({ user, testUserSwitch }: any) {
               period={period}
               refresh={refresh}
               user={user}
+              siteProjects={(siteBoot?.siteOperationProjects || []).map((p: any) => p.Project_ID)}
             />
+          </TabsContent>
+          <TabsContent value="site-dpr">
+            {tab === 'site-dpr' && (siteBoot ? <SiteDpr boot={siteBoot} /> : <p className="muted">Loading…</p>)}
+          </TabsContent>
+          <TabsContent value="site-stock">
+            {tab === 'site-stock' && (siteBoot ? <SiteStock boot={siteBoot} /> : <p className="muted">Loading…</p>)}
           </TabsContent>
           <TabsContent value="audit">
             <AuditReview period={period}
