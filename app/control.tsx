@@ -16,6 +16,7 @@ import ReceiveGoods from './receive-goods';
 import SiteDpr from './site-dpr';
 import SiteStock from './site-stock';
 import { SiteDashboard, SiteLabour, DprCompliance, QcAttendance, SitePurchase, EmailTimes } from './site-insights';
+import { SiteQuality, SiteQcVisits } from './site-qc';
 import { siteCall, siteRoleOf } from '@/lib/site-client';
 import QuoteRequests from './quotes';
 import BillCheck from './bill-check';
@@ -88,6 +89,7 @@ import {
   Building2,
   UserCog,
   HardHat,
+  ClipboardCheck,
   Boxes,
 } from 'lucide-react';
 import {
@@ -459,17 +461,21 @@ export default function Control({ user, testUserSwitch }: any) {
         setSiteBoot(b);
         // A Site Engineer's day starts on the Daily DPR.
         if (siteRole === 'SITE_ENGINEER') setTab((t) => (t === 'weekly' ? 'site-dpr' : t));
+        // A QC engineer's day starts on their booked inspections.
+        if (siteRole === 'QC') setTab((t) => (t === 'weekly' ? 'site-qc' : t));
       })
       .catch(() => setSiteBoot({ user: { role: siteRole }, projects: [], siteOperationProjects: [] }));
   }, [siteRole]);
-  const siteTabs = ['site-dpr', 'site-stock', 'site-dashboard', 'site-labour', 'site-compliance', 'site-attendance', 'site-purchase', 'site-emails'];
+  const siteTabs = ['site-dpr', 'site-stock', 'site-quality', 'site-qc', 'site-dashboard', 'site-labour', 'site-compliance', 'site-attendance', 'site-purchase', 'site-emails'];
   const siteTabRoles: Record<string, string[]> = {
     'site-dpr': ['PM', 'SITE_ENGINEER', 'QC', 'GM', 'ADMIN'], 'site-stock': ['PM', 'SITE_ENGINEER', 'QC', 'GM', 'ADMIN'],
+    'site-quality': ['PM', 'GM', 'ADMIN'], 'site-qc': ['QC', 'ADMIN'],
     'site-dashboard': ['PM', 'GM', 'AUDITOR', 'ADMIN', 'PURCHASE'], 'site-labour': ['PM', 'GM', 'AUDITOR', 'LABOR_MANAGER'],
     'site-compliance': ['GM', 'ADMIN', 'AUDITOR'], 'site-attendance': ['GM'], 'site-purchase': ['PURCHASE', 'ADMIN'], 'site-emails': ['ADMIN'],
   };
   const siteLabels: Record<string, string> = {
     'site-dpr': siteRole === 'PM' ? 'Daily targets' : 'Daily DPR', 'site-stock': 'Site stock',
+    'site-quality': 'Quality checks', 'site-qc': siteRole === 'QC' ? 'My QC visits' : 'QC inspections',
     'site-dashboard': siteRole === 'PM' ? 'My sites' : siteRole === 'PURCHASE' ? 'Site materials' : 'Site dashboard',
     'site-labour': siteRole === 'PM' ? 'Site productivity' : siteRole === 'GM' ? 'Labour approval' : 'Labour payables',
     'site-compliance': 'DPR compliance', 'site-attendance': 'QC office attendance', 'site-purchase': 'Site purchase', 'site-emails': 'Site email times',
@@ -1202,6 +1208,8 @@ export default function Control({ user, testUserSwitch }: any) {
               ['site-dpr', siteLabels['site-dpr'], HardHat],
               ['grn', 'Receive goods (GRN)', PackageCheck],
               ['site-stock', 'Site stock', Boxes],
+              ['site-quality', siteLabels['site-quality'], ClipboardCheck],
+              ['site-qc', siteLabels['site-qc'], ClipboardCheck],
               ['site-dashboard', siteLabels['site-dashboard'], Gauge],
               ['site-labour', siteLabels['site-labour'], UsersIcon],
               ['site-compliance', 'DPR compliance', CalendarCheck],
@@ -1215,8 +1223,8 @@ export default function Control({ user, testUserSwitch }: any) {
               ['users', 'Users & roles', UserCog],
               ['settings', 'Settings', ShieldCheck],
             ]
-              // A Site Engineer works mostly on site pages: show them first.
-              .sort((x: any, y: any) => siteRole === 'SITE_ENGINEER' ? Number(['site-dpr', 'grn', 'site-stock'].includes(String(y[0]))) - Number(['site-dpr', 'grn', 'site-stock'].includes(String(x[0]))) : 0)
+              // Site Engineers and QC engineers work mostly on site pages: show them first.
+              .sort((x: any, y: any) => { const first = siteRole === 'SITE_ENGINEER' ? ['site-dpr', 'grn', 'site-stock'] : siteRole === 'QC' ? ['site-qc', 'site-dpr', 'grn', 'site-stock'] : []; return Number(first.includes(String(y[0]))) - Number(first.includes(String(x[0]))); })
               .filter(
                 ([v]) =>
                   (!['projects', 'users', 'settings'].includes(String(v)) ||
@@ -1413,6 +1421,8 @@ export default function Control({ user, testUserSwitch }: any) {
           <TabsContent value="site-stock">
             {tab === 'site-stock' && (siteBoot ? <SiteStock boot={siteBoot} /> : <p className="muted">Loading…</p>)}
           </TabsContent>
+          <TabsContent value="site-quality">{tab === 'site-quality' && (siteBoot ? <SiteQuality boot={siteBoot} /> : <p className="muted">Loading…</p>)}</TabsContent>
+          <TabsContent value="site-qc">{tab === 'site-qc' && (siteBoot ? <SiteQcVisits boot={siteBoot} /> : <p className="muted">Loading…</p>)}</TabsContent>
           <TabsContent value="site-dashboard">{tab === 'site-dashboard' && siteBoot && <SiteDashboard boot={siteBoot} />}</TabsContent>
           <TabsContent value="site-labour">
             {tab === 'site-labour' && (siteRole === 'HR'

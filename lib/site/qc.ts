@@ -881,7 +881,8 @@ async function markAssignmentCompleted(s: Site, projectChecklistId: string, qcEm
 async function completeBooking(s: Site, bookingId: string) {
   if (!bookingId || !(await s.find('QC_Booking_Header', 'Booking_ID', bookingId))) return;
   await s.update('QC_Booking_Header', 'Booking_ID', bookingId, {Status: 'COMPLETED'});
-  await s.updateWhere('QC_Booking_Dates', (r) => r.Booking_ID === bookingId, {Status: 'COMPLETED'});
+  // Days dropped when the booking was edited stay cancelled (the QC app revived them, so they showed twice).
+  await s.updateWhere('QC_Booking_Dates', (r) => r.Booking_ID === bookingId && up(r.Status) !== 'CANCELLED', {Status: 'COMPLETED'});
 }
 async function notifyPmOfSubmission(s: Site, checklist: Row, inspection: Row, pdfUrl: string) {
   const project = (await s.find('Projects', 'Project_ID', inspection.Project_ID)) || {};

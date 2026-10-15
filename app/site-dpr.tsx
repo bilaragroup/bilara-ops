@@ -43,7 +43,7 @@ function newTarget(category: string): Any {
   };
 }
 
-function Sel({ label, value, onChange, options, required, id }: Any) {
+export function Sel({ label, value, onChange, options, required, id }: Any) {
   return (
     <label className="field">
       <span>{label}{required ? ' *' : ''}</span>
@@ -53,7 +53,7 @@ function Sel({ label, value, onChange, options, required, id }: Any) {
     </label>
   );
 }
-function Num({ label, value, onChange, required, step = 'any', min = 0, max, id, hint }: Any) {
+export function Num({ label, value, onChange, required, step = 'any', min = 0, max, id, hint }: Any) {
   return (
     <label className="field">
       <span>{label}{required ? ' *' : ''}</span>
@@ -62,7 +62,7 @@ function Num({ label, value, onChange, required, step = 'any', min = 0, max, id,
     </label>
   );
 }
-function Txt({ label, value, onChange, required, max = 200, id, placeholder, area }: Any) {
+export function Txt({ label, value, onChange, required, max = 200, id, placeholder, area }: Any) {
   return (
     <label className="field">
       <span>{label}{required ? ' *' : ''}</span>
@@ -72,7 +72,7 @@ function Txt({ label, value, onChange, required, max = 200, id, placeholder, are
     </label>
   );
 }
-function Photos({ label, files, setFiles, id, need }: Any) {
+export function Photos({ label, files, setFiles, id, need }: Any) {
   return (
     <div className="site-photos">
       <label className="field">
