@@ -9,7 +9,7 @@ const settings=await call('settings');
 const original=settings.values;
 try{
  await call('settings',{version:settings.version,values:{...original,targetDiscountPercent:5,projectRates:[...(original.projectRates||[]),{id:crypto.randomUUID(),project:'987',item:'Cement',unit:'BAG',originalRate:400,discountPercent:5,active:true}]}});
- const common={kind:'plan',project:'987',milestone:'2',activity:'4',activityName:'Masonry',activityBoqQty:500,window,due:'2026-10-02',owner:'Jithin',itemCategory:'Materials',requestBatchId:batch};
+ const common={kind:'plan',project:'987',milestone:'1',activity:'4',activityName:'Masonry',activityBoqQty:500,window,due:'2026-10-02',owner:'Jithin',itemCategory:'Materials',requestBatchId:batch};
  const first=await call('records',{...common,item:'Cement',unit:'BAG',boqQty:100,demandQty:100});
  const second=await call('records',{...common,item:'Sand',unit:'CFT',boqQty:200,demandQty:200});
  let cement=await read(first.id),sand=await read(second.id);

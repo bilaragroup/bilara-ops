@@ -16,7 +16,7 @@ try{
  await ok('projects',{project:'970',name:'QA 970',site:'Isolated',managerEmail:PM,qcEmail:'',engineerEmails:[],active:1,version:0});
  await ok('projects',{project:'971',name:'QA 971',site:'Isolated',managerEmail:PM2,qcEmail:'',engineerEmails:[],active:1,version:0});
  const W=normalWindow(),N=add(W,7);let seq=0;
- const make=async(item,qty,{quote,approve,order}={})=>{seq++;const id=(await ok('records',{kind:'plan',project:'970',item,unit:'BAG',milestone:'2',activity:String(seq),activityName:'Slab concreting',activityBoqQty:qty,boqQty:qty,owner:'Jithin',itemCategory:'Materials',window:W,due:add(W,2),requestBatchId:'cf'+seq},PM)).id;
+ const make=async(item,qty,{quote,approve,order}={})=>{seq++;const id=(await ok('records',{kind:'plan',project:'970',item,unit:'BAG',milestone:'2',activity:String(20+seq),activityName:'Slab concreting',activityBoqQty:qty,boqQty:qty,owner:'Jithin',itemCategory:'Materials',window:W,due:add(W,2),requestBatchId:'cf'+seq},PM)).id;
   let r=await row(id);await ok('records',{id,version:r.version,boqOriginalRate:350,targetDiscountPercent:5,boqOwner:'Subha'},BOQ);r=await row(id);
   await ok('gm-approval',{ids:[id],versions:{[id]:r.version},decision:'Approved',note:'ok',confirmed:true},BOQ);
   if(quote){r=await row(id);await ok('records',{id,version:r.version,vendor:'QA Cement',quoteRate:320,quoteReference:'Q'+seq,entity:'GROUP',stage:'Vendors finalized'},BUY);}

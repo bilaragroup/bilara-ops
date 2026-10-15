@@ -38,7 +38,7 @@ try {
   // PM target for today
   let ws = await siteOk('getDprWorkspace', ['960', today], PM);
   assert.equal(ws.permissions.canEditPlan, true); assert.equal(ws.daily, null);
-  assert.equal(ws.activityCatalogue.length, 105);
+  assert.equal(ws.activityCatalogue.length, 106);
   const plan = {projectId: '960', workDate: today, clientRequestId: 'plan-1', expectedPlanVersion: 0, plannedMasons: 4, plannedLabourers: 4, plannedShiftCode: '8', plannedVendor: 'Ravi labour',
     targets: [
       {activityCategory: 'BRICKWORK', floor: 'GROUND_FLOOR', workStage: 'UP_TO_LINTEL', materialType: '6-inch cement blocks', workArea: 'Living room', measurementType: 'QUANTITY', unit: 'sq ft', plannedTarget: 180, plannedHours: 8, plannedActivityMasons: 2, plannedActivityLabourers: 2, pmRemarks: 'Photo each wall from the door'},

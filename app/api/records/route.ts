@@ -1,3 +1,4 @@
+import { MILESTONE_NUMBERS, activityOf, milestoneLabel } from '@/lib/activities';
 import { protect } from '@/lib/access';
 import { paymentBlock } from '@/lib/grn';
 import {
@@ -475,12 +476,31 @@ async function handlePOST(req: Request, a: Actor) {
       data.milestone = String(data.milestone).trim();
       data.activity = String(data.activity).trim();
       data.activityName = String(data.activityName).trim();
-      if (!options.milestones.includes(data.milestone))
-        return fail('Choose an active milestone from Settings.');
-      if (!/^[1-9][0-9]{0,2}$/.test(data.activity))
-        return fail(
-          'Activity must be a whole number, such as 4. Request sequence is assigned automatically.',
-        );
+      // Old records keep their saved milestone and activity; new or changed ones must come
+      // from the company list (five milestones, each activity in one milestone).
+      const unchanged =
+        old &&
+        String(old.milestone) === data.milestone &&
+        String(old.activity) === data.activity;
+      if (!unchanged) {
+        if (
+          !options.milestones.includes(data.milestone) ||
+          !MILESTONE_NUMBERS.includes(data.milestone)
+        )
+          return fail('Choose an active milestone from Settings.');
+        if (!/^[1-9][0-9]{0,2}$/.test(data.activity))
+          return fail(
+            'Activity must be a whole number, such as 4. Request sequence is assigned automatically.',
+          );
+        const listed = activityOf(data.activity);
+        if (!listed)
+          return fail('Activity ' + data.activity + ' is not in the company activity list.');
+        if (String(listed.milestone) !== data.milestone)
+          return fail(
+            'Activity ' + listed.number + ' (' + listed.name + ') belongs to ' + milestoneLabel(listed.milestone) + '.',
+          );
+        if (!data.activityName) data.activityName = listed.name;
+      }
       if (data.activityBoqQty !== undefined && data.activityBoqQty <= 0)
         return fail('Activity BOQ quantity must be greater than zero.');
       const all = (

@@ -6,6 +6,7 @@
 //                quality sign-off, and asks the PM to reopen a submitted day
 //  GM / Admin    read only
 import { useEffect, useMemo, useState } from 'react';
+import { milestoneLabel } from '@/lib/activities';
 import { siteCall, requestId, istToday, addDays, niceDate, fmt, titleCase, photoData } from '@/lib/site-client';
 
 type Any = any;
@@ -200,7 +201,7 @@ function PlanEditor({ ws, onSaved, onCancel }: Any) {
                     <select required value={t.activityNumber} onChange={(e) => set(i, { activityNumber: e.target.value })}>
                       <option value="">Select an activity…</option>
                       {Object.keys(groups).sort((a, b) => Number(a) - Number(b)).map((m) => (
-                        <optgroup key={m} label={'Milestone ' + m}>
+                        <optgroup key={m} label={milestoneLabel(m)}>
                           {groups[m].map((a: Any) => <option key={a.number} value={a.number}>{a.number} — {a.name}</option>)}
                         </optgroup>
                       ))}

@@ -1,3 +1,4 @@
+import { MILESTONE_NUMBERS } from './activities';
 export type ProjectRate = {
   id: string;
   project: string;
@@ -22,7 +23,7 @@ export const defaultSettings: Settings = {
   owners: ['Jithin', 'Jiby', 'Rosmi', 'Sneha', 'Stevo'],
   boqPreparers: ['Subha', 'Shilpa', 'Sachin Surendran'],
   itemCategories: ['Materials', 'Tools & Equipment', 'Services'],
-  milestones: ['1', '2', '3', '4', '5', '6'],
+  milestones: ['1', '2', '3', '4', '5'],
   targetDiscountPercent: 5,
   projectRates: [],
   rateCardImportedAt: '',
@@ -67,11 +68,11 @@ export function validateSettings(value: any): Settings {
     if (
       !Array.isArray(value?.[key]) ||
       !value[key].length ||
-      value[key].length > (key === 'milestones' ? 10 : 200)
+      value[key].length > (key === 'milestones' ? MILESTONE_NUMBERS.length : 200)
     )
       throw Error(
         key === 'milestones'
-          ? 'Configure between 1 and 10 milestones.'
+          ? 'Milestones are 1 to ' + MILESTONE_NUMBERS.length + ' (the company milestone list).'
           : 'Each list needs 1–200 entries.',
       );
     const names = value[key].map((s: any) =>
@@ -81,9 +82,9 @@ export function validateSettings(value: any): Settings {
       throw Error('Use one name per line, up to 100 characters.');
     if (
       key === 'milestones' &&
-      names.some((s: string) => !/^([1-9]|10)$/.test(s))
+      names.some((s: string) => !MILESTONE_NUMBERS.includes(s))
     )
-      throw Error('Milestones must be whole numbers from 1 to 10.');
+      throw Error('Milestones are 1 to ' + MILESTONE_NUMBERS.length + ' (the company milestone list).');
     if (
       new Set(names.map((s: string) => s.toLowerCase())).size !== names.length
     )

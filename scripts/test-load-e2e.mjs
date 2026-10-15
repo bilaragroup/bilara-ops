@@ -20,7 +20,7 @@ async function pool(count,worker,concurrency,progress=false){let next=0;const ru
 function percentile(values,p){const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.min(sorted.length-1,Math.floor(sorted.length*p))]||0;}
 try{
  await setup();
- const pmPlan=await call('records','pm',{kind:'plan',project:'980',item:'PM submission check',milestone:'1',activity:'99',activityName:'PM submission check',activityBoqQty:1,unit:'NOS',boqQty:1,owner:'Jithin',itemCategory:'Materials',window:week,due:week});assert.ok(pmPlan.id);let pmCheck=await read(pmPlan.id,'admin');await call('records','admin',{...pmCheck,stage:'Rejected',reviewNote:'Role boundary verified'});
+ const pmPlan=await call('records','pm',{kind:'plan',project:'980',item:'PM submission check',milestone:'5',activity:'99',activityName:'PM submission check',activityBoqQty:1,unit:'NOS',boqQty:1,owner:'Jithin',itemCategory:'Materials',window:week,due:week});assert.ok(pmPlan.id);let pmCheck=await read(pmPlan.id,'admin');await call('records','admin',{...pmCheck,stage:'Rejected',reviewNote:'Role boundary verified'});
  const started=performance.now();await pool(cycles,runCycle,flowConcurrency,true);const flowSeconds=(performance.now()-started)/1000;
  for(const project of projects)await call('forecast','manager',{window:week,project,exceptionReason:'Load test finalization'});
  const readStarted=performance.now();await pool(reads,i=>call(i%3===0?'records':i%3===1?'forecast':'documents',i%4===0?'audit':'buyer'),readConcurrency);const readSeconds=(performance.now()-readStarted)/1000;

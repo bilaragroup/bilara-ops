@@ -41,7 +41,7 @@ async function upload(type,project,window,vendor,recordIds,reference,email){
 // ---- workflow steps, each performed by the role that does it in real life ----
 let seq=0;
 async function raise(project,item,unit,qty,window=W,extra={}){seq++;
- return (await call('records',{kind:'plan',project,item,unit,milestone:extra.milestone||'1',activity:String(extra.activity||seq),activityName:extra.activityName||'Foundation',activityBoqQty:qty,boqQty:qty,owner:'Jithin',itemCategory:'Materials',window,due:window,requestBatchId:'demo-'+seq,notes:extra.notes||''},P.pm)).id;}
+ return (await call('records',{kind:'plan',project,item,unit,milestone:extra.milestone||'1',activity:String(extra.activity||((seq-1)%20)+1),activityName:extra.activityName||'Foundation',activityBoqQty:qty,boqQty:qty,owner:'Jithin',itemCategory:'Materials',window,due:window,requestBatchId:'demo-'+seq,notes:extra.notes||''},P.pm)).id;}
 async function boqPrice(id,rate){const r=await get(id);await call('records',{id,version:r.version,boqOriginalRate:rate,targetDiscountPercent:5,boqOwner:'Subha'},P.boq);}
 async function boqRelease(id,who=P.boq){const r=await get(id);await call('gm-approval',{ids:[id],versions:{[id]:r.version},decision:'Approved',note:'Within the activity BOQ quantity',confirmed:true},who);}
 async function quote(id,vendor,rate,ref,send=true){const r=await get(id);await call('records',{id,version:r.version,vendor,vendorPhone:'98470 12345',quoteRate:rate,quoteReference:ref,entity:'GROUP',...(send?{stage:'Vendors finalized'}:{})},P.buy);}

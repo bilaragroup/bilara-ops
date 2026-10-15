@@ -18,6 +18,7 @@ import SiteStock from './site-stock';
 import { SiteDashboard, SiteLabour, DprCompliance, QcAttendance, SitePurchase, EmailTimes } from './site-insights';
 import { SiteQuality, SiteQcVisits } from './site-qc';
 import { siteCall, siteRoleOf } from '@/lib/site-client';
+import { milestoneLabel, activityOf, activitiesOfMilestone } from '@/lib/activities';
 import QuoteRequests from './quotes';
 import BillCheck from './bill-check';
 import AuditReview from './audit-review';
@@ -116,6 +117,28 @@ function Choice({ value, onChange, options, label }: any) {
         ))}
       </SelectContent>
     </Select>
+  );
+}
+/** Activity from the company list for the chosen milestone; fills in the activity name. */
+function ActivityChoice({ draft, set, readOnly }: any) {
+  const list = activitiesOfMilestone(draft.milestone);
+  const current = String(draft.activity || '');
+  if (readOnly || !draft.milestone)
+    return (
+      <Field name="activity" label="Activity number" required readOnly={readOnly || !draft.milestone} draft={draft} set={set} />
+    );
+  const options = list.map((a) => [String(a.number), a.number + ' · ' + a.name]);
+  if (current && !options.some((o) => o[0] === current)) options.unshift([current, current + ' · ' + (draft.activityName || 'not in the list')]);
+  return (
+    <label className="field">
+      <span>Activity *</span>
+      <Choice
+        label="Activity"
+        value={current}
+        onChange={(v: string) => set({ ...draft, activity: v, activityName: activityOf(v)?.name || draft.activityName })}
+        options={options}
+      />
+    </label>
   );
 }
 function Tag({ children, tone = 'neutral' }: any) {
@@ -1335,7 +1358,7 @@ export default function Control({ user, testUserSwitch }: any) {
                         ['all', 'All milestones'],
                         ...settings.values.milestones.map((v) => [
                           v,
-                          'Milestone ' + v,
+                          milestoneLabel(v),
                         ]),
                       ]}
                     />
@@ -2164,7 +2187,7 @@ export default function Control({ user, testUserSwitch }: any) {
                           label="Milestone"
                           value={String(draft.milestone || '')}
                           onChange={(v: string) =>
-                            setDraft({ ...draft, milestone: v })
+                            setDraft({ ...draft, milestone: v, ...(String(draft.milestone) !== v ? { activity: '', activityName: '' } : {}) })
                           }
                           options={[
                             ...new Set([
@@ -2173,16 +2196,13 @@ export default function Control({ user, testUserSwitch }: any) {
                                 ? [String(draft.milestone)]
                                 : []),
                             ]),
-                          ].map((v) => [v, 'Milestone ' + v])}
+                          ].map((v) => [v, milestoneLabel(v)])}
                         />
                       </label>
-                      <Field
-                        name="activity"
-                        label="Activity number"
-                        required
-                        readOnly={!!baselineLocked(draft)}
+                      <ActivityChoice
                         draft={draft}
                         set={setDraft}
+                        readOnly={!!baselineLocked(draft)}
                       />
                       <Field
                         name="activityName"
@@ -2893,20 +2913,14 @@ function MultiItemRequest({
             <Choice
               label="Milestone"
               value={String(draft.milestone || '')}
-              onChange={(v: string) => change('milestone', v)}
+              onChange={(v: string) => setDraft({ ...draft, milestone: v, activity: '', activityName: '' })}
               options={settings.milestones.map((v: string) => [
                 v,
-                'Milestone ' + v,
+                milestoneLabel(v),
               ])}
             />
           </label>
-          <Field
-            name="activity"
-            label="Activity number"
-            required
-            draft={draft}
-            set={setDraft}
-          />
+          <ActivityChoice draft={draft} set={setDraft} />
           <Field
             name="activityName"
             label="Activity name"
