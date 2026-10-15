@@ -1,6 +1,7 @@
 // Role-scoped operational dashboards for PM, GM, Auditor, Admin and Purchase (from the QC
 // app's Dashboard.gs). The default period is now the Thursday-to-Wednesday week (decision
-// 15 Oct 2026); "Last 7 days" stays available as its own, clearly named choice.
+// 15 Oct 2026) and replaces the QC app's rolling last-7-days week, so "week" means the
+// same Thursday-to-Wednesday week here as in purchasing and payments.
 import {Site, Row, SiteError, dateKey, isValidDateKey, addDaysKey, weekStartKey, clientSafe, normaliseEmail, unique, storedDate} from './core';
 import {isSelectableProject} from './access';
 import {dprIsSubmitted} from './dpr';
@@ -32,13 +33,14 @@ function workingDays(start: string, end: string) {
 }
 
 export const DASHBOARD_PRESETS = [
-  {id: 'DAY', label: 'Day'}, {id: 'WEEK', label: 'This week (Thu–Wed)'}, {id: 'LAST_7_DAYS', label: 'Last 7 days'},
+  {id: 'DAY', label: 'Day'}, {id: 'WEEK', label: 'This week (Thu–Wed)'},
   {id: 'MONTH', label: 'Last 30 days'}, {id: 'QUARTER', label: 'Last 90 days'},
 ];
 
 export function dashboardRange(today: string, filters: any) {
   const f = filters || {};
-  const preset = String(f.preset || 'WEEK').toUpperCase();
+  const asked = String(f.preset || 'WEEK').toUpperCase();
+  const preset = DASHBOARD_PRESETS.some((p) => p.id === asked) ? asked : 'WEEK';
   const key = (v: any) => { const k = dateKey(v); if (!isValidDateKey(k)) throw new SiteError('Select a valid dashboard date.'); return k; };
   let end = f.endDate ? key(f.endDate) : today;
   let start: string;
@@ -46,7 +48,6 @@ export function dashboardRange(today: string, filters: any) {
   else if (preset === 'DAY') start = end;
   else if (preset === 'MONTH') start = addDaysKey(end, -29);
   else if (preset === 'QUARTER') start = addDaysKey(end, -89);
-  else if (preset === 'LAST_7_DAYS') start = addDaysKey(end, -6);
   else start = weekStartKey(end); // WEEK: the Thursday-to-Wednesday week holding the end date
   if (end > today) end = today;
   if (start > end) throw new SiteError('Dashboard start date cannot be after the end date.');

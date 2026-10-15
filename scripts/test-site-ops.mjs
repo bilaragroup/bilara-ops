@@ -73,13 +73,14 @@ try {
   // Dashboard periods
   const dWeek = await siteOk('getOperationsDashboard', [{}], GM);
   assert.equal(dWeek.range.preset, 'WEEK'); assert.equal(dWeek.range.start, THU); assert.equal(dWeek.range.end, THU);
+  // The QC app's rolling "last 7 days" week is gone: an old link asking for it gets the Thu–Wed week.
   const d7 = await siteOk('getOperationsDashboard', [{preset: 'LAST_7_DAYS'}], GM);
-  assert.equal(d7.range.start, '2026-10-09'); assert.match(d7.range.label, /Last 7 days/);
+  assert.equal(d7.range.start, THU); assert.match(d7.range.label, /Thu–Wed/);
   const dPrev = await siteOk('getOperationsDashboard', [{preset: 'WEEK', endDate: WED}], GM);
   assert.equal(dPrev.range.start, '2026-10-08'); assert.equal(dPrev.range.end, WED);
-  assert.ok(dPrev.presets.some((p) => p.id === 'LAST_7_DAYS'));
+  assert.deepEqual(dPrev.presets.map((p) => p.id), ['DAY', 'WEEK', 'MONTH', 'QUARTER']);
   assert.equal((await site('getOperationsDashboard', [{}], SE)).status, 400);
-  pass('dashboard: "This week" is the Thu–Wed week (from Thursday 15 it starts again), "Last 7 days" stays as its own labelled choice; site engineers cannot open it');
+  pass('dashboard: "This week" is the Thu–Wed week (from Thursday 15 it starts again), the old rolling 7-day week is no longer offered; site engineers cannot open it');
 
   // Labour payables: cycle Thu 8 – Wed 14, paid Thursday 15
   const lab = await siteOk('getLaborPayablesWorkspace', [{}], GM);
