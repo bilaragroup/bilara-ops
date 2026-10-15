@@ -222,6 +222,10 @@ export class Site {
    * already checks the site version, so both sides apply together or not at all.
    */
   external: {statements: any[]; guard: {sql: string; binds: any[]}} | null = null;
+  /** Clean-up when the action fails (e.g. remove photos already stored). */
+  onError: Array<() => Promise<void>> = [];
+  /** Writes that must still be saved when the action fails (e.g. "upload needs a retry"). */
+  failureWrites: Array<(f: Site) => Promise<void>> = [];
 
   constructor(user: SiteUser | null, action = 'system', db?: any) {
     this.db = db || database();
@@ -495,7 +499,16 @@ export async function runSiteAction<T>(user: SiteUser | null, action: string, fn
       }
       return value;
     } catch (e) {
+      for (const undo of s.onError) { try { await undo(); } catch { /* best effort */ } }
       if (e instanceof SiteConflict) { lastError = e; continue; }
+      if (s.failureWrites.length) {
+        try {
+          const f = new Site(user, action + ':failure', opts.db);
+          if (opts.clock) f.clock = opts.clock;
+          for (const w of s.failureWrites) await w(f);
+          await f.commit();
+        } catch { /* the original error is what the person needs to see */ }
+      }
       throw e;
     }
   }

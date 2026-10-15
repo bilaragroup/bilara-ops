@@ -8,11 +8,15 @@ import {getProjectsForUser, getSiteOperationsProjectsForUser} from '@/lib/site/a
 import * as M from '@/lib/site/materials';
 import * as G from '@/lib/site/grn';
 import * as P from '@/lib/site/purchase-view';
+import * as D from '@/lib/site/dpr';
+import {assertProjectArchiveAccess} from '@/lib/site/access';
+import {listFiles} from '@/lib/site/files';
+import {documentStorage} from '@/lib/documents';
 
 const BUILD = 'site-ops-2026.10.15';
 
 type Handler = (s: Site, a: Actor, args: any[]) => Promise<any>;
-const READ_ONLY = new Set(['bootstrap', 'getMaterialInventoryWorkspace', 'getReceiveGoodsWorkspace', 'getGrnItemMaster', 'getSitePurchaseWorkspace']);
+const READ_ONLY = new Set(['bootstrap', 'getMaterialInventoryWorkspace', 'getReceiveGoodsWorkspace', 'getGrnItemMaster', 'getSitePurchaseWorkspace', 'getDprWorkspace', 'listSiteFiles']);
 
 const ACTIONS: Record<string, Handler> = {
   bootstrap: async (s) => {
@@ -45,7 +49,29 @@ const ACTIONS: Record<string, Handler> = {
   saveGrnItemMaster: (s, _a, x) => M.saveGrnItemMaster(s, x[0]),
   getSitePurchaseWorkspace: (s, _a, x) => P.getSitePurchaseWorkspace(s, x[0] || {}),
   saveGrnFollowup: (s, _a, x) => P.saveGrnFollowup(s, x[0]),
+  // Daily Progress Report
+  getDprWorkspace: (s, _a, x) => D.getDprWorkspace(s, x[0], x[1]),
+  saveDprPlan: (s, _a, x) => D.saveDprPlan(s, x[0]),
+  saveDprMorning: (s, _a, x) => D.saveDprMorning(s, x[0]),
+  saveDprEvening: (s, _a, x) => D.saveDprEvening(s, x[0]),
+  uploadDeferredDprEvidence: (s, _a, x) => D.uploadDeferredDprEvidence(s, x[0]),
+  scheduleDprPostCommitTrigger: (s) => D.scheduleDprPostCommitTrigger(s),
+  requestDprResubmission: (s, _a, x) => D.requestDprResubmission(s, x[0]),
+  approveDprResubmission: (s, _a, x) => D.approveDprResubmission(s, x[0]),
+  // Photos and documents kept for the site pages (were Google Drive folders)
+  listSiteFiles: async (s, _a, x) => {
+    const prefix = String(x[0] || '');
+    await checkFileAccess(s, prefix);
+    return {prefix, files: (await listFiles(prefix)).map((f) => ({...f, name: f.key.split('/').pop(), url: '/api/site?action=siteFile&key=' + encodeURIComponent(f.key)}))};
+  },
 };
+
+/** Site files live under site/<project>/...; the same people who may open that project's records may open them. */
+async function checkFileAccess(s: Site, key: string) {
+  const m = /^site\/([^/]+)\//.exec(key);
+  if (!m || key.includes('..')) throw new SiteError('File not found.');
+  await assertProjectArchiveAccess(s, s.currentUser(), m[1]);
+}
 
 export function siteUserOf(a: Actor): SiteUser {
   return {email: a.email, name: a.name, role: siteRole(a.roles), allowedProjects: a.projects.length ? a.projects.join(',') : 'ALL'};
@@ -99,6 +125,20 @@ async function handle(req: Request, action: string, args: any[]) {
 
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
+  if (q.get('action') === 'siteFile') {
+    try {
+      const local = new URL(req.url).hostname === 'localhost' && req.headers.get('x-bilara-test-strict') !== '1';
+      const user = siteUserOf(await actor(req.headers, local));
+      const key = String(q.get('key') || '');
+      await runSiteAction(user, 'siteFile', (s) => checkFileAccess(s, key));
+      const file = await documentStorage().get(key);
+      if (!file) return Response.json({error: 'File not found.'}, {status: 404});
+      return new Response(file.body, {headers: {'Content-Type': file.httpMetadata?.contentType || 'application/octet-stream', 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff'}});
+    } catch (e) {
+      if (e instanceof AccessError) return Response.json({error: e.message}, {status: e.status});
+      return Response.json({error: (e as Error).message || 'File not available.'}, {status: 403});
+    }
+  }
   const args = q.get('args') ? JSON.parse(String(q.get('args'))) : [q.get('projectId') ?? undefined];
   return handle(req, String(q.get('action') || ''), Array.isArray(args) ? args : [args]);
 }
