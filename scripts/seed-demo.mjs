@@ -28,8 +28,8 @@ const thursday=s=>{const d=new Date(s+'T00:00:00Z');return add(s,-((d.getUTCDay(
 // Next standard planned week: first Thursday whose cut-off (12 days before, 9 a.m. IST) is still ahead.
 let W=add(thursday(today),7);while(new Date(add(W,-12)+'T09:00:00+05:30')<=new Date())W=add(W,7);
 
-const P={pm:'pm@demo.test',boq:'boq@demo.test',buy:'purchase@demo.test',audit:'audit@demo.test',gm:'gm@demo.test',acc:'accounts@demo.test',se1:'se1@demo.test',se2:'se2@demo.test',qc:'qc@demo.test'};
-const people=[[P.pm,'Demo PM (Biju)',['Project Manager']],[P.boq,'Demo BOQ (Subha)',['BOQ Team']],[P.buy,'Demo Purchase (Jithin)',['Purchase Manager']],[P.audit,'Demo Audit (Rijila)',['Audit']],[P.gm,'Demo GM (Sachin)',['GM']],[P.acc,'Demo Accounts (Gokul)',['Accounts']],[P.se1,'Demo SE (Sandeep)',['Site Engineer']],[P.se2,'Demo SE (Arun)',['Site Engineer']],[P.qc,'Demo QC (Anu)',['QC']]];
+const P={pm:'pm@demo.test',boq:'boq@demo.test',buy:'purchase@demo.test',audit:'audit@demo.test',gm:'gm@demo.test',acc:'accounts@demo.test',se1:'se1@demo.test',se2:'se2@demo.test',qc:'qc@demo.test',qc2:'qc2@demo.test',labour:'labour@demo.test'};
+const people=[[P.pm,'Demo PM (Biju)',['Project Manager']],[P.boq,'Demo BOQ (Subha)',['BOQ Team']],[P.buy,'Demo Purchase (Jithin)',['Purchase Manager']],[P.audit,'Demo Audit (Rijila)',['Audit']],[P.gm,'Demo GM (Sachin)',['GM']],[P.acc,'Demo Accounts (Gokul)',['Accounts']],[P.se1,'Demo SE (Sandeep)',['Site Engineer']],[P.se2,'Demo SE (Arun)',['Site Engineer']],[P.qc,'Demo QC (Anu)',['QC']],[P.qc2,'Demo QC (Meera)',['QC']],[P.labour,'Demo Labour manager (Jiby)',['Labour Manager']]];
 
 const PDF=new TextEncoder().encode('%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n');
 async function upload(type,project,window,vendor,recordIds,reference,email){
@@ -90,6 +90,8 @@ async function seedQuotes(){
 const steps=[];const done=(label)=>{steps.push(label);console.log('  ✓ '+label);};
 try{
  const existing=(await call('projects')).projects||[];
+ // People are added even when the demo is already loaded, so new demo roles appear after an update.
+ {const users=(await call('users')).users||[];for(const [email,name,roles] of people)if(!users.some(u=>u.email===email))await call('users',{email,name,roles,projects:[],active:1,version:0});}
  if(existing.some(p=>['901','902'].includes(p.project))&&(await records()).some(r=>['901','902'].includes(r.project))){console.log('Demo data is already loaded (projects 901 and 902).');await seedQuotes();console.log('Open http://localhost:3000.');process.exit(0);}
  console.log(`Loading demo data into ${BASE} for the execution week starting Thursday ${W}…`);
  const users=(await call('users')).users||[];
