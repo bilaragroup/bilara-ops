@@ -10,7 +10,7 @@ import { siteCall, requestId, istToday, fmt, titleCase } from '@/lib/site-client
 type Any = any;
 const statusTone: Record<string, string> = { OK: 'green', LOW: 'amber', 'OUT OF STOCK': 'red', NEGATIVE: 'red' };
 const label = (m: Any) => m.materialName + (m.variant ? ' ' + m.variant : '');
-const statusText = (s: string) => (s === 'OK' ? 'OK' : titleCase(s));
+const statusText = (s: string) => titleCase(s);
 
 function Field({ label: l, children, wide }: Any) {
   return <label className={'field' + (wide ? ' site-span-2' : '')}><span>{l}</span>{children}</label>;

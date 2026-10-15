@@ -46,11 +46,15 @@ export const fmt = (n: any, digits = 2) => {
   const v = Number(n);
   return Number.isFinite(v) ? String(Math.round(v * 10 ** digits) / 10 ** digits) : '';
 };
-export const titleCase = (s: string) =>
-  String(s || '')
-    .toLowerCase()
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+const ACRONYMS: Record<string, string> = { pm: 'PM', dpr: 'DPR', qc: 'QC', grn: 'GRN', gin: 'GIN', po: 'PO', gm: 'GM', hr: 'HR', lop: 'LOP', ok: 'OK', eod: 'EOD' };
+const WORDING: Record<string, string> = { 'PM PLAN MISSING': 'PM target missing', 'PM TARGET NOT SET': 'PM target not set', 'NO PM TARGET': 'No PM target' };
+/** Server status codes as plain sentence-case text ("FILED ON TIME" → "Filed on time"). */
+export const titleCase = (s: string) => {
+  const raw = String(s || '').trim();
+  if (WORDING[raw.toUpperCase()]) return WORDING[raw.toUpperCase()];
+  const text = raw.toLowerCase().replace(/_/g, ' ').replace(/\b[a-z]+\b/g, (w) => ACRONYMS[w] || w);
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
 
 export type PhotoData = { name: string; mimeType: string; data: string };
 

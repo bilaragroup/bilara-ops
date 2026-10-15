@@ -15,6 +15,7 @@ import PeriodPicker from './period-picker';
 import ReceiveGoods from './receive-goods';
 import SiteDpr from './site-dpr';
 import SiteStock from './site-stock';
+import { SiteDashboard, SiteLabour, DprCompliance, QcAttendance, SitePurchase, EmailTimes } from './site-insights';
 import { siteCall, siteRoleOf } from '@/lib/site-client';
 import QuoteRequests from './quotes';
 import BillCheck from './bill-check';
@@ -76,6 +77,10 @@ import {
   ClipboardList,
   Wallet,
   ShieldCheck,
+  Gauge,
+  Users as UsersIcon,
+  CalendarCheck,
+  Mail,
   TriangleAlert,
   ChevronLeft,
   ChevronRight,
@@ -438,11 +443,14 @@ export default function Control({ user, testUserSwitch }: any) {
       setLoading(false);
     }
   };
-  useEffect(() => {
-    refresh();
-  }, []);
   // Site operations (from the QC app): who this person is on site and which projects they see.
   const siteRole = siteRoleOf(user.roles);
+  // Labour manager, HR and contractors work only on site pages and do not read purchasing records.
+  const siteOnly = ['LABOR_MANAGER', 'HR', 'CONTRACTOR'].includes(siteRole);
+  useEffect(() => {
+    if (siteOnly) { setLoading(false); setTab('site-labour'); return; }
+    refresh();
+  }, []);
   const [siteBoot, setSiteBoot] = useState<any>(null);
   useEffect(() => {
     if (!siteRole || ['HR', 'CONTRACTOR'].includes(siteRole)) return;
@@ -454,7 +462,18 @@ export default function Control({ user, testUserSwitch }: any) {
       })
       .catch(() => setSiteBoot({ user: { role: siteRole }, projects: [], siteOperationProjects: [] }));
   }, [siteRole]);
-  const siteTabs = ['site-dpr', 'site-stock'];
+  const siteTabs = ['site-dpr', 'site-stock', 'site-dashboard', 'site-labour', 'site-compliance', 'site-attendance', 'site-purchase', 'site-emails'];
+  const siteTabRoles: Record<string, string[]> = {
+    'site-dpr': ['PM', 'SITE_ENGINEER', 'QC', 'GM', 'ADMIN'], 'site-stock': ['PM', 'SITE_ENGINEER', 'QC', 'GM', 'ADMIN'],
+    'site-dashboard': ['PM', 'GM', 'AUDITOR', 'ADMIN', 'PURCHASE'], 'site-labour': ['PM', 'GM', 'AUDITOR', 'LABOR_MANAGER'],
+    'site-compliance': ['GM', 'ADMIN', 'AUDITOR'], 'site-attendance': ['GM'], 'site-purchase': ['PURCHASE', 'ADMIN'], 'site-emails': ['ADMIN'],
+  };
+  const siteLabels: Record<string, string> = {
+    'site-dpr': siteRole === 'PM' ? 'Daily targets' : 'Daily DPR', 'site-stock': 'Site stock',
+    'site-dashboard': siteRole === 'PM' ? 'My sites' : siteRole === 'PURCHASE' ? 'Site materials' : 'Site dashboard',
+    'site-labour': siteRole === 'PM' ? 'Site productivity' : siteRole === 'GM' ? 'Labour approval' : 'Labour payables',
+    'site-compliance': 'DPR compliance', 'site-attendance': 'QC office attendance', 'site-purchase': 'Site purchase', 'site-emails': 'Site email times',
+  };
   function changeTab(v: string) {
     setTab(v);
     setQuery('');
@@ -1180,9 +1199,15 @@ export default function Control({ user, testUserSwitch }: any) {
               ['purchase-plan', 'Purchase plan', Wallet],
               ['audit', 'Audit review', ShieldCheck],
               ['orders', 'Purchase orders', PackageCheck],
-              ['site-dpr', siteRole === 'PM' ? 'Daily targets' : 'Daily DPR', HardHat],
+              ['site-dpr', siteLabels['site-dpr'], HardHat],
               ['grn', 'Receive goods (GRN)', PackageCheck],
               ['site-stock', 'Site stock', Boxes],
+              ['site-dashboard', siteLabels['site-dashboard'], Gauge],
+              ['site-labour', siteLabels['site-labour'], UsersIcon],
+              ['site-compliance', 'DPR compliance', CalendarCheck],
+              ['site-attendance', 'QC office attendance', CalendarCheck],
+              ['site-purchase', 'Site purchase', PackageCheck],
+              ['site-emails', 'Site email times', Mail],
               ['payment', 'Payment forecast', Wallet],
               ['documents', 'Documents', ClipboardList],
               ['backup', 'Backups', Download],
@@ -1200,7 +1225,8 @@ export default function Control({ user, testUserSwitch }: any) {
                   (v !== 'audit' || has(user, 'Audit', 'GM')) &&
                   (v !== 'grn' ||
                     has(user, 'Site Engineer', 'QC', 'Project Manager', 'Purchase Manager', 'Purchase Team')) &&
-                  (!siteTabs.includes(String(v)) || ['PM', 'SITE_ENGINEER', 'QC', 'GM', 'ADMIN'].includes(siteRole)),
+                  (!siteTabs.includes(String(v)) || (siteTabRoles[String(v)] || []).includes(siteRole)) &&
+                  (!siteOnly || siteTabs.includes(String(v))),
               )
               .map(([v, label, Icon]: any) => (
                 <TabsTrigger key={v} value={v}>
@@ -1232,8 +1258,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     'purchase-plan': 'Purchase plan',
                     audit: 'Audit review',
                     grn: 'Receive goods (GRN)',
-                    'site-dpr': siteRole === 'PM' ? 'Daily targets' : 'Daily DPR',
-                    'site-stock': 'Site stock',
+                    ...siteLabels,
                     quotes: 'Plumbing & electrical',
                     projects: 'Projects',
                     users: 'Users & roles',
@@ -1388,6 +1413,16 @@ export default function Control({ user, testUserSwitch }: any) {
           <TabsContent value="site-stock">
             {tab === 'site-stock' && (siteBoot ? <SiteStock boot={siteBoot} /> : <p className="muted">Loading…</p>)}
           </TabsContent>
+          <TabsContent value="site-dashboard">{tab === 'site-dashboard' && siteBoot && <SiteDashboard boot={siteBoot} />}</TabsContent>
+          <TabsContent value="site-labour">
+            {tab === 'site-labour' && (siteRole === 'HR'
+              ? <div className="panel empty"><h3>QC office attendance is sent to HR by email</h3><p>There is nothing to do here.</p></div>
+              : siteBoot && <SiteLabour boot={siteBoot} />)}
+          </TabsContent>
+          <TabsContent value="site-compliance">{tab === 'site-compliance' && <DprCompliance />}</TabsContent>
+          <TabsContent value="site-attendance">{tab === 'site-attendance' && <QcAttendance />}</TabsContent>
+          <TabsContent value="site-purchase">{tab === 'site-purchase' && <SitePurchase />}</TabsContent>
+          <TabsContent value="site-emails">{tab === 'site-emails' && <EmailTimes />}</TabsContent>
           <TabsContent value="audit">
             <AuditReview period={period}
               records={records}

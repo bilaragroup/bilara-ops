@@ -335,3 +335,10 @@ button.danger{color:#a1312a}
 .site-page .field input,.site-page .field select,.site-page .field textarea,.receive-goods .field input,.receive-goods .field select{box-sizing:border-box;width:100%;min-width:0;max-width:100%}
 .site-page .textbutton,.receive-goods .textbutton{background:none;border:0;padding:0;cursor:pointer}
 .site-table .textbutton{text-align:left}
+.site-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:0 0 22px}
+.site-tile{background:#fff;border:1px solid #dce4ea;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;border-top:4px solid #ccd7df}
+.site-tile span{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#637a8a}.site-tile b{font-size:22px}.site-tile small{font-size:12px;color:#637a8a}
+.site-tile.green{border-top-color:#2f8a5b}.site-tile.amber{border-top-color:#c99a2e}.site-tile.red{border-top-color:#b3261e}
+.site-report{border-top:1px solid #edf2f6;padding:12px 0}
+.site-inline-form{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}.site-inline-form .plan-input{max-width:160px}
+.dark .site-tile{background:var(--card);border-color:var(--border)}.dark .site-tile span,.dark .site-tile small{color:var(--muted-foreground)}
