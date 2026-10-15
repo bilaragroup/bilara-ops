@@ -112,7 +112,8 @@ export const SITE_TABLES:Record<string,string[]>={
 "Void_Status",
 "Void_Reason",
 "Booking_ID",
-"Quality_Check_Code"
+"Quality_Check_Code",
+"Report_Key"
 ],
 "Evidence_Files": [
 "Evidence_Record_ID",
@@ -824,5 +825,73 @@ export const SITE_TABLES:Record<string,string[]>={
 "Purchase_Remarks",
 "Purchase_Updated_By",
 "Purchase_Updated_At"
+],
+"Notification_Log": [
+"Notification_ID",
+"Event_Type",
+"Related_Record_ID",
+"Recipient_Email",
+"Subject",
+"Sent_At",
+"Status",
+"Error_Message"
+],
+"QC_Office_Attendance": [
+"Work_Date",
+"QC_Email",
+"QC_Name",
+"Present",
+"Absence_Reason",
+"GM_Decision",
+"LOP_Status",
+"Updated_At",
+"Updated_By"
+],
+"QC_Unavailability": [
+"Unavailability_ID",
+"QC_Email",
+"Date",
+"Type",
+"Notes",
+"Status",
+"Created_By",
+"Created_At"
+],
+"Reinspection_Links": [
+"Base_Inspection_ID",
+"From_Version_ID",
+"To_Version_ID",
+"Reason",
+"Created_At",
+"Created_By",
+"Open_Action_Count_At_Creation"
+],
+"Checklist_Library": [
+"Template_Item_ID",
+"Template_Revision",
+"Stage",
+"Sequence",
+"Checkpoint",
+"Default_Acceptance_Criteria",
+"Response_Type",
+"Unit",
+"Criticality",
+"Photo_Required",
+"Hold_Point",
+"Mandatory_Class",
+"Source",
+"Active"
+],
+"Drawing_Register": [
+"Drawing_Record_ID",
+"Project_ID",
+"Discipline",
+"Drawing_Number",
+"Title",
+"Revision",
+"Current",
+"File_Key",
+"Uploaded_By",
+"Uploaded_At"
 ]
 };

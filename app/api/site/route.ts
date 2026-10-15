@@ -9,6 +9,10 @@ import * as M from '@/lib/site/materials';
 import * as G from '@/lib/site/grn';
 import * as P from '@/lib/site/purchase-view';
 import * as D from '@/lib/site/dpr';
+import * as L from '@/lib/site/labour';
+import * as T from '@/lib/site/attendance';
+import * as O from '@/lib/site/ops';
+import * as B from '@/lib/site/dashboard';
 import {assertProjectArchiveAccess} from '@/lib/site/access';
 import {listFiles} from '@/lib/site/files';
 import {documentStorage} from '@/lib/documents';
@@ -16,7 +20,7 @@ import {documentStorage} from '@/lib/documents';
 const BUILD = 'site-ops-2026.10.15';
 
 type Handler = (s: Site, a: Actor, args: any[]) => Promise<any>;
-const READ_ONLY = new Set(['bootstrap', 'getMaterialInventoryWorkspace', 'getReceiveGoodsWorkspace', 'getGrnItemMaster', 'getSitePurchaseWorkspace', 'getDprWorkspace', 'listSiteFiles']);
+const READ_ONLY = new Set(['bootstrap', 'getMaterialInventoryWorkspace', 'getReceiveGoodsWorkspace', 'getGrnItemMaster', 'getSitePurchaseWorkspace', 'getDprWorkspace', 'listSiteFiles', 'getOperationsDashboard', 'getLaborPayablesWorkspace', 'getLaborRecords', 'getAdminAttendanceWorkspace', 'getDprComplianceWorkspace', 'getEmailSchedule']);
 
 const ACTIONS: Record<string, Handler> = {
   bootstrap: async (s) => {
@@ -58,6 +62,18 @@ const ACTIONS: Record<string, Handler> = {
   scheduleDprPostCommitTrigger: (s) => D.scheduleDprPostCommitTrigger(s),
   requestDprResubmission: (s, _a, x) => D.requestDprResubmission(s, x[0]),
   approveDprResubmission: (s, _a, x) => D.approveDprResubmission(s, x[0]),
+  // GM / management pages (dashboard, labour payables and records, QC office attendance, DPR compliance)
+  getOperationsDashboard: (s, _a, x) => B.getOperationsDashboard(s, x[0] || {}),
+  getLaborPayablesWorkspace: (s, _a, x) => L.getLaborPayablesWorkspace(s, x[0] || {}),
+  saveGmLaborLeniency: (s, _a, x) => L.saveGmLaborLeniency(s, x[0]),
+  getLaborRecords: (s, _a, x) => L.getLaborRecords(s, x[0] || {}),
+  getAdminAttendanceWorkspace: (s, _a, x) => T.getAdminAttendanceWorkspace(s, x[0], x[1]),
+  saveAttendanceDecision: (s, _a, x) => T.saveAttendanceDecision(s, x[0]),
+  refreshHrAttendance: (s, _a, x) => T.refreshHrAttendance(s, x[0]),
+  getDprComplianceWorkspace: (s, _a, x) => O.getDprComplianceWorkspace(s, x[0] || {}),
+  // Email times (Admin) — the QC app's Email Schedule dialog
+  getEmailSchedule: (s) => O.getEmailSchedule(s),
+  saveEmailSchedule: (s, _a, x) => O.saveEmailSchedule(s, x[0]),
   // Photos and documents kept for the site pages (were Google Drive folders)
   listSiteFiles: async (s, _a, x) => {
     const prefix = String(x[0] || '');
