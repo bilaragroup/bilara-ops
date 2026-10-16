@@ -41,7 +41,7 @@ async function handlePOST(req: Request, a: Actor) {
       const next = (b.replace ? [] : card.filter((r) => !seen.has(lineKey(r)))).slice();
       for (const l of lines) {
         const old = card.find((r) => lineKey(r) === lineKey(l));
-        const originalRate = Number(l.originalRate), discountPercent = l.discountPercent === '' || l.discountPercent == null ? 5 : Number(l.discountPercent);
+        const originalRate = Number(l.originalRate), discountPercent = l.discountPercent === '' || l.discountPercent == null ? (old?.discountPercent ?? 5) : Number(l.discountPercent);
         if (old && old.originalRate === originalRate && old.discountPercent === discountPercent && old.active !== false) { next.push(old); continue; }
         old ? changed++ : added++;
         next.push({...scope, id: old?.id || crypto.randomUUID(), item: clean(l.item), unit: clean(l.unit) || '*', originalRate, discountPercent, active: true,
@@ -68,7 +68,7 @@ async function handlePOST(req: Request, a: Actor) {
       let added = 0, changed = 0;
       const next: ProjectRate[] = [];
       for (const c of sheet.cards) {
-        const scope: Partial<ProjectRate> = c.scope === 'range' ? {scope: 'range', project: '', fromProject: c.fromProject, toProject: c.toProject} : {project: c.project};
+        const scope: Partial<ProjectRate> = c.scope === 'default' ? {scope: 'default', project: ''} : c.scope === 'range' ? {scope: 'range', project: '', fromProject: c.fromProject, toProject: c.toProject} : {project: c.project};
         const key = rateCardKey(scope);
         keys.add(key);
         const old = rates.filter((r) => rateCardKey(r) === key);

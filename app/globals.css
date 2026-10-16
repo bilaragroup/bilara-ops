@@ -378,3 +378,4 @@ button.danger{color:#a1312a}
 .forecast-split .variation-row td{background:#fff8ec}.forecast-split .total-row td{border-top:2px solid var(--border);background:#f6f9fb}
 .dark .forecast-split .variation-row td{background:#3a321d}.dark .forecast-split .total-row td{background:#1d2b35}
 .rate-pick{display:flex;align-items:center;gap:12px;margin:10px 0 14px;flex-wrap:wrap}.rate-preview{max-height:340px;overflow:auto;margin-bottom:8px}.rate-preview td small{color:var(--muted-foreground)}.rate-intro .actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.textbutton.inline{display:inline;padding:0;font-size:inherit}

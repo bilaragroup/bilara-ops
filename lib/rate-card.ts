@@ -39,7 +39,7 @@ export function parseRateCard(values:any[][],existing:ProjectRate[],discountPerc
  * accepted (no fixed template). If a project appears twice, its rows are combined and a
  * warning says so; the later row wins where both rows have a rate.
  */
-export type SheetCard={scope:'project'|'range';project:string;fromProject?:string;toProject?:string;row:number;lines:{item:string;originalRate:number}[]};
+export type SheetCard={scope:'default'|'project'|'range';project:string;fromProject?:string;toProject?:string;row:number;lines:{item:string;originalRate:number}[]};
 export function parseRateSheet(values:any[][]){
  if(!values.length)throw Error('The spreadsheet is empty.');
  const headers=values[0].map((v:any)=>text(v).replace(/^﻿/,'').replace(/\s+/g,' '));
@@ -50,8 +50,16 @@ export function parseRateSheet(values:any[][]){
  const cards=new Map<string,SheetCard>(),warnings:string[]=[];
  for(let row=1;row<values.length;row++){
   const cells=values[row]||[];if(!cells.some(v=>text(v)))continue;
-  const raw=text(cells[0]).replace(/\.0+$/,'').replace(/\s+/g,''),m=/^([1-9][0-9]{2})(?:[-–to]+([1-9][0-9]{2}))?$/i.exec(raw);
-  if(!m)throw Error(`Row ${row+1}: "${text(cells[0])}" is not a project number (100–999) or a range such as 120-150.`);
+  const raw=text(cells[0]).replace(/\.0+$/,'').replace(/\s+/g,'');
+  if(/^(default|all|allprojects)$/i.test(raw)){
+   // The default card: every project without its own card or range.
+   const lines:{item:string;originalRate:number}[]=[];
+   for(const {index,item} of items){const v=cells[index];if(!text(v))continue;const rate=number(v);if(!Number.isFinite(rate)||rate<=0||rate>1e9)throw Error(`Row ${row+1}: ${item} needs a positive rate (found "${text(v)}").`);lines.push({item,originalRate:rate});}
+   if(cards.has('default'))throw Error(`Row ${row+1}: the default rate card is on two rows. Keep one.`);
+   cards.set('default',{scope:'default',project:'',row,lines});continue;
+  }
+  const m=/^([1-9][0-9]{2})(?:[-–to]+([1-9][0-9]{2}))?$/i.exec(raw);
+  if(!m)throw Error(`Row ${row+1}: "${text(cells[0])}" is not a project number (100–999), a range such as 120-150, or Default.`);
   const range=!!m[2]&&m[2]!==m[1];
   if(range&&Number(m[1])>Number(m[2]))throw Error(`Row ${row+1}: write the range from the smaller project number, e.g. ${m[2]}-${m[1]}.`);
   const key=range?`range:${m[1]}-${m[2]}`:`project:${m[1]}`;
@@ -68,7 +76,46 @@ export function parseRateSheet(values:any[][]){
  }
  const list=[...cards.values()].filter(c=>c.lines.length);
  const empty=[...cards.values()].filter(c=>!c.lines.length);
- if(empty.length)warnings.push(`No rates on the row for ${empty.map(c=>c.scope==='range'?c.fromProject+'–'+c.toProject:c.project).join(', ')}; ${empty.length===1?'it was':'they were'} skipped.`);
+ if(empty.length)warnings.push(`No rates on the row for ${empty.map(c=>c.scope==='default'?'Default':c.scope==='range'?c.fromProject+'–'+c.toProject:c.project).join(', ')}; ${empty.length===1?'it was':'they were'} skipped.`);
  if(!list.length)throw Error('No rates were found. Fill at least one rate, then upload again.');
  return {cards:list,warnings,rateCount:list.reduce((n,c)=>n+c.lines.length,0)};
+}
+
+export type RateTarget={type:'default'}|{type:'project';project:string}|{type:'range';from:string;to:string};
+const targetKey=(t:RateTarget)=>t.type==='default'?'default':t.type==='range'?`range:${t.from}-${t.to}`:`project:${t.project}`;
+const targetText=(t:RateTarget)=>t.type==='default'?'the default rate card':t.type==='range'?`projects ${t.from}–${t.to}`:`project ${t.project}`;
+/**
+ * The rates for one chosen card from an uploaded sheet. Two layouts are read:
+ *  - the BOQ Team's sheet: "Project Number" then one column per item. The row for the chosen
+ *    card is used (its project number, range like 120-150, or "Default"); a row whose first cell
+ *    is blank is taken as the chosen card.
+ *  - a list: Item, Unit, BOQ rate, Reduction % (one row per item).
+ * Unit blank = any unit; Reduction blank = left as it is (5% for new items).
+ */
+export function sheetLinesFor(values:any[][],target:RateTarget){
+ if(!values.length)throw Error('The spreadsheet is empty.');
+ const head=(values[0]||[]).map((v:any)=>text(v).replace(/^﻿/,'').replace(/\s+/g,' ').toLowerCase());
+ if(/^project( number| no\.?)?$/.test(head[0]||'')){
+  const fill=target.type==='default'?'Default':target.type==='range'?`${target.from}-${target.to}`:target.project;
+  const rows=values.map((r,i)=>i>0&&!text(r?.[0])&&(r||[]).some((v:any)=>text(v))?[fill,...r.slice(1)]:r);
+  const sheet=parseRateSheet(rows);
+  const card=sheet.cards.find(c=>(c.scope==='default'?'default':c.scope==='range'?`range:${c.fromProject}-${c.toProject}`:`project:${c.project}`)===targetKey(target));
+  if(!card)throw Error(`The sheet has no row for ${targetText(target)}. Put ${target.type==='default'?'"Default"':fill} in the Project Number column (or leave it blank on a one-row sheet), or go back and choose "Several projects from the sheet".`);
+  return {lines:card.lines.map(l=>({item:l.item,unit:'',originalRate:l.originalRate,discountPercent:''})),others:sheet.cards.length-1,warnings:sheet.warnings};
+ }
+ const col=(names:string[])=>head.findIndex((h:string)=>names.includes(h));
+ const ci=col(['item','items']),cu=col(['unit']),cr=col(['boq rate','rate','boq rate (₹)']),cd=col(['reduction %','reduction','target reduction %']);
+ if(ci<0||cr<0)throw Error('Use either your rate-card sheet ("Project Number" then one column per item) or a list with the headings Item and BOQ rate.');
+ const lines:any[]=[];
+ values.slice(1).forEach((r,n)=>{
+  const item=text(r?.[ci]),raw=text(r?.[cr]);
+  if(!item||!raw)return;
+  const rate=number(raw);
+  if(!Number.isFinite(rate)||rate<=0||rate>1e9)throw Error(`Row ${n+2}: ${item} needs a positive BOQ rate.`);
+  const d=cd>=0&&text(r?.[cd])!==''?Number(text(r[cd]).replace('%','')):'';
+  if(d!==''&&(!Number.isFinite(d)||d<0||d>50))throw Error(`Row ${n+2}: reduction must be 0–50%.`);
+  lines.push({item,unit:cu>=0?text(r?.[cu]):'',originalRate:rate,discountPercent:d});
+ });
+ if(!lines.length)throw Error('No rates were found in the sheet. Fill the rates, then upload again.');
+ return {lines,others:0,warnings:[] as string[]};
 }
