@@ -370,3 +370,5 @@ button.danger{color:#a1312a}
 .rate-steps{margin:4px 0 14px;padding-left:20px;display:flex;flex-direction:column;gap:10px;font-size:14px}.rate-steps .textbutton{display:inline}
 .dark .rate-kind{background:#304551;color:#d2e3ec}.dark .rate-kind.range{background:#4a3e21;color:#f6d895}.dark .rate-kind.project{background:#1d4939;color:#a5e5bf}.dark .rate-line input{border-color:var(--border)}
 @media(max-width:700px){.rate-intro{flex-direction:column}.rate-choices,.rate-choices.two{grid-template-columns:1fr}.rate-line{grid-template-columns:1fr 1fr;padding-bottom:8px;border-bottom:1px solid var(--border)}.rate-line input[aria-label=Item]{grid-column:1/-1}.rate-line.head{display:none}.rate-card>summary small{margin-left:0;flex-basis:100%}}
+.rate-pick{display:flex;align-items:center;gap:12px;margin:10px 0 14px;flex-wrap:wrap}.rate-preview{max-height:340px;overflow:auto;margin-bottom:8px}.rate-preview td small{color:var(--muted-foreground)}.rate-intro .actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.textbutton.inline{display:inline;padding:0;font-size:inherit}
