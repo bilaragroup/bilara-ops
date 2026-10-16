@@ -248,7 +248,9 @@ export class Site {
 
   async begin() {
     if (this.lockVersion === null) {
-      const r = await this.db.prepare('SELECT version FROM site_lock WHERE id=1').first();
+      let r = await this.db.prepare('SELECT version FROM site_lock WHERE id=1').first();
+      // The lock row must exist or no site save can ever succeed (e.g. after the local data was emptied).
+      if (!r) { await this.db.prepare('INSERT OR IGNORE INTO site_lock (id,version) VALUES (1,0)').run(); r = {version: 0}; }
       this.lockVersion = Number(r?.version || 0);
     }
   }

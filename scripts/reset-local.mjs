@@ -36,6 +36,8 @@ if (!tables.length) { console.error('No tables found. Run  bash setup-local.sh  
 console.log(`2/3  Emptying ${tables.length} tables…`);
 wrangler(tables.map((t) => `DELETE FROM "${t.replace(/"/g, '""')}";`).join(' '));
 // The local sign-in user, as setup-local.sh creates it.
+// Site saves need their lock row back.
+wrangler(`INSERT OR IGNORE INTO site_lock (id,version) VALUES (1,0);`);
 wrangler(`INSERT OR REPLACE INTO app_users (email,name,roles,projects,active,version) VALUES ('seedy@sites.test','Local Admin','["Super Admin"]','[]',1,1);`);
 
 console.log('3/3  Removing uploaded files (photos, bills, reports)…');
