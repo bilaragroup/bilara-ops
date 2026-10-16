@@ -32,7 +32,7 @@ function recordWrite(a:Actor,b:any,old:any){
  if(has(a,'Audit')){assert(['Vendors finalized','Audit approved'].includes(old.stage));assert(Object.keys(b).filter(changed).every(k=>['stage','auditOwner','reviewNote','dryRun'].includes(k)),'Audit may record its decision; commercial changes go back to the GM.');return;}
  assert(has(a,'Purchase Manager','Purchase Team')&&canEditAssigned(a,old),'This request must be assigned to you before you can prepare it.');
  assert(old.stage==='BOQ priced','Only GM-priced requests can be prepared.');
- assert(Object.keys(b).filter(changed).every(k=>['vendor','vendorPhone','quoteRate','quoteReference','entity','entityConfirmed','stage','notes','dryRun'].includes(k)),'The BOQ baseline is fixed by the GM.');
+ {const extra=Object.keys(b).filter(changed).filter(k=>!['vendor','vendorPhone','quoteRate','quoteReference','entity','entityConfirmed','stage','notes','dryRun'].includes(k));assert(!extra.length,'Purchase can change only the vendor, phone, vendor rate, quotation reference, entity and notes'+(extra.includes('due')||extra.includes('window')?'; to change the delivery date use Reschedule on the request':'')+' (not: '+extra.join(', ')+').');}
  assert(!b.stage||['BOQ priced','Vendors finalized'].includes(b.stage),'Submit vendor details for audit approval.');
 }
 export async function protect(req:Request,cap:string,handler:(req:Request,a:Actor)=>Promise<Response>){try{

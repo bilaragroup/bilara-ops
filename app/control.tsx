@@ -784,10 +784,30 @@ export default function Control({ user, testUserSwitch }: any) {
     setBusy(true);
     setFormError('');
     try {
+      // Editing: send only what actually changed. The form fills defaults (status, priority,
+      // cost fields…) that the saved request never had; sending them made the server refuse
+      // the save for roles that may change only a few fields (e.g. Purchase, BOQ).
+      const saved = draft.id ? records.find((x) => x.id === draft.id) : null;
+      const same = (x: any, y: any) =>
+        (x ?? '') === (y ?? '') ||
+        ((x === 0 || x === '' || x == null) && (y == null || y === '')) ||
+        (typeof x === 'object' && typeof y === 'object' && JSON.stringify(x) === JSON.stringify(y)) ||
+        (x !== '' && y !== '' && x != null && y != null && typeof x !== 'object' && String(x) === String(y));
+      const body = saved
+        ? Object.fromEntries(
+            Object.entries(draft).filter(
+              ([k, v]) =>
+                ['id', 'version', 'kind'].includes(k) ||
+                (!same(v, saved[k]) &&
+                  // form defaults the request never had
+                  !(saved[k] == null && ['accountsBy', 'auditOwner', 'status', 'priority', 'category'].includes(k))),
+            ),
+          )
+        : draft;
       const r = await fetch('/api/records', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(body),
       });
       const data: any = await r.json();
       if (!r.ok) throw new Error(data.error);
