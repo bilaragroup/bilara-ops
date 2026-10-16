@@ -501,7 +501,9 @@ export class Site {
  */
 export async function runSiteAction<T>(user: SiteUser | null, action: string, fn: (s: Site) => Promise<T>, opts: {clock?: () => Date; db?: any} = {}): Promise<T> {
   let lastError: any;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    // Back off a little (with jitter) so a burst of saves elsewhere does not win every retry.
+    if (attempt) await new Promise((r) => setTimeout(r, 40 * 2 ** Math.min(attempt, 5) + Math.random() * 120));
     const s = new Site(user, action, opts.db);
     if (opts.clock) s.clock = opts.clock;
     try {
@@ -525,5 +527,5 @@ export async function runSiteAction<T>(user: SiteUser | null, action: string, fn
       throw e;
     }
   }
-  throw new SiteError('The site records were busy. Please try again. ' + (lastError?.message || ''));
+  throw new SiteError('Other site updates were being saved at the same moment, so this could not finish. Wait a few seconds and press Refresh.');
 }
