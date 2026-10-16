@@ -9,7 +9,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { rateCardKey, rateCardLabel, scopeOf, rateAppliesTo, purchaseTarget } from '@/lib/settings';
-import { parseRateSheet, sheetLinesFor, RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
+import { parseRateSheet, sheetLinesFor, RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS, RATE_CARD_EXPORT_URL } from '@/lib/rate-card';
 
 type Any = any;
 const inr = (n: any) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -288,14 +288,17 @@ function AddRateCard({ start, cards, projects, onClose, onDone, post }: Any) {
         </>}
 
         {step === 3 && how === 'excel' && <>
-          <p className="muted">{many
-            ? <>Your rate-card sheet: <b>Project Number</b> in the first column, then one column per item. Each row replaces that card. A row can be a range such as <b>120-150</b>, or <b>Default</b>.</>
-            : <>Your rate-card sheet (<b>Project Number</b>, then one column per item) with a row for {scope.type === 'default' ? <b>Default</b> : <b>{scope.type === 'range' ? `${scope.from}-${scope.to}` : scope.project}</b>} — or a list with <b>Item</b>, <b>Unit</b>, <b>BOQ rate</b>, <b>Reduction %</b>. The sheet replaces this card's items.{existing && <> <button type="button" className="textbutton inline" onClick={() => downloadCards([existing], label)}>Download the current card</button> to start from.</>}</>}</p>
           <input ref={input} type="file" accept=".xlsx" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} />
           <div className="rate-pick">
-            <button type="button" className={sheet ? 'secondary' : 'primary'} onClick={() => input.current?.click()}>{file ? 'Choose another file' : 'Choose Excel sheet'}</button>
+            <button type="button" className={sheet ? 'secondary' : 'primary'} onClick={() => input.current?.click()}>{file ? 'Upload another spreadsheet' : 'Upload spreadsheet'}</button>
             {file && <span className="muted">{file}</span>}
           </div>
+          <p className="muted">{many
+            ? <>Use the rate-card spreadsheet you already have: <b>Project Number</b> in the first column, then one column per item. Each row replaces that card. A row can be a range such as <b>120-150</b>, or <b>Default</b>.</>
+            : <>Use the rate-card spreadsheet you already have (<b>Project Number</b>, then one column per item); the row for {scope.type === 'default' ? <b>Default</b> : <b>{scope.type === 'range' ? `${scope.from}-${scope.to}` : scope.project}</b>} is used. A list with <b>Item</b>, <b>Unit</b>, <b>BOQ rate</b>, <b>Reduction %</b> also works. The sheet replaces this card's items.</>}</p>
+          <p className="muted rate-sources">
+            <a className="textbutton inline" href={RATE_CARD_EXPORT_URL} target="_blank" rel="noreferrer">Download the BilaraRateCard sheet</a> (the Google sheet linked in the app){existing && <> · <button type="button" className="textbutton inline" onClick={() => downloadCards([existing], label)}>Download this card's current rates</button></>}
+          </p>
           {sheet?.lines && <>
             <p className="alert green">{sheet.lines.length} rates read.{diff()}{sheet.others ? ` The other ${sheet.others} row${sheet.others === 1 ? ' is' : 's are'} ignored.` : ''}</p>
             {sheet.warnings?.map((w: string) => <p key={w} className="alert amber">{w}</p>)}
