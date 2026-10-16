@@ -1,3 +1,4 @@
+import {sameOrigin} from '@/lib/access';
 import {protect} from '@/lib/access';
 import {Actor,confidential,visible,inProject,has} from '@/lib/permissions';
 import {database,decode} from '@/lib/database';
@@ -7,7 +8,7 @@ import {indiaToday} from '@/lib/weekly';
 import {paymentBlock} from '@/lib/grn';
 const fail=(error:string,status=400)=>Response.json({error},{status});
 async function handlePOST(req:Request,a:Actor){try{
- if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return fail('Origin not allowed',403);
+ if(!sameOrigin(req))return fail('Origin not allowed',403);
  const b=JSON.parse(new TextDecoder().decode(await boundedBody(req,40000))),db=database();
  if(typeof b.batchId!=='string'||!/^[0-9a-f-]{36}$/.test(b.batchId))return fail('Invalid payment request.');
  if(await db.prepare('SELECT id FROM payment_batches WHERE id=?').bind(b.batchId).first())return Response.json({ok:true,alreadySaved:true});

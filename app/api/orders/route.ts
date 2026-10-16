@@ -1,3 +1,4 @@
+import {sameOrigin} from '@/lib/access';
 import {protect} from '@/lib/access';
 import {Actor,confidential,visible,inProject,has} from '@/lib/permissions';
 import {database,decode} from '@/lib/database';
@@ -6,7 +7,7 @@ import {purchaseCost} from '@/lib/calculations';
 import {addDays,thursday} from '@/lib/weekly';
 const fail=(error:string,status=400)=>Response.json({error},{status});
 async function handlePOST(req:Request,a:Actor){try{
- if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return fail('Origin not allowed',403);
+ if(!sameOrigin(req))return fail('Origin not allowed',403);
  const text=await req.text();if(text.length>40000)return fail('Order is too large');const b=JSON.parse(text);
  if(!/^[0-9a-f-]{36}$/i.test(b.orderId||''))return fail('Invalid order reference');
  const db=database();const existing=await db.prepare("SELECT id FROM records WHERE kind='purchase' AND json_extract(data,'$.orderId')=?").bind(b.orderId).first<any>();

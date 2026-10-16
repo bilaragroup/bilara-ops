@@ -1,3 +1,4 @@
+import {sameOrigin} from '@/lib/access';
 import {protect} from '@/lib/access';
 import {Actor,confidential,visible,inProject,has} from '@/lib/permissions';
 import {database,decode} from '@/lib/database';
@@ -5,7 +6,7 @@ import {dateValid} from '@/lib/calculations';
 import {addDays,indiaToday,thursday} from '@/lib/weekly';
 const fail=(error:string,status=400)=>Response.json({error},{status});
 async function handlePOST(req:Request,a:Actor){try{
- if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return fail('Origin not allowed',403);
+ if(!sameOrigin(req))return fail('Origin not allowed',403);
  const text=await req.text();if(text.length>20000)return fail('Update is too large');const b=JSON.parse(text);
  if(!['delayDay','reschedule','delivered','pending','cancel'].includes(b.action))return fail('Choose a delivery action');
  if(!Array.isArray(b.items)||!b.items.length||b.items.length>100||new Set(b.items.map((x:any)=>x.id)).size!==b.items.length)return fail('Select 1–100 different PO items');

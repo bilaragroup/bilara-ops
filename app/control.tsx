@@ -2458,7 +2458,7 @@ export default function Control({ user, testUserSwitch }: any) {
                                 type="button"
                                 key={w}
                                 className={'secondary' + (draft.window === w ? ' chosen' : '')}
-                                onClick={() => setDraft({ ...draft, window: w, due: draft.due >= w && draft.due <= addDays(w, 6) && draft.due >= today() ? draft.due : w < today() ? today() : w })}
+                                onClick={() => setDraft({ ...draft, window: w, due: draft.kind !== 'payment' && draft.due && draft.due >= today() ? draft.due : draft.due >= w && draft.due <= addDays(w, 6) && draft.due >= today() ? draft.due : w < today() ? today() : w })}
                               >
                                 {d === 0 ? 'This week' : d === 7 ? 'Next week' : 'Week after'} · {weekLabel(w)}
                               </button>
@@ -2483,8 +2483,10 @@ export default function Control({ user, testUserSwitch }: any) {
                           setDraft({
                             ...draft,
                             window: next,
+                            // A request's delivery date can be any day; only a payment's due date sits in its week.
                             due:
-                              draft.due >= next && draft.due <= addDays(next, 6)
+                              (draft.kind !== 'payment' && draft.due && draft.due >= today()) ||
+                              (draft.due >= next && draft.due <= addDays(next, 6))
                                 ? draft.due
                                 : draft.kind === 'request' && next < today()
                                   ? today()
@@ -3088,10 +3090,7 @@ function MultiItemRequest({
                 setDraft({
                   ...draft,
                   window: next,
-                  due:
-                    draft.due >= next && draft.due <= addDays(next, 6)
-                      ? draft.due
-                      : next,
+                  due: draft.due && draft.due >= today() ? draft.due : next,
                 })
               }
             />

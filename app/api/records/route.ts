@@ -1,3 +1,4 @@
+import {sameOrigin} from '@/lib/access';
 import { MILESTONE_NUMBERS, activityOf, milestoneLabel } from '@/lib/activities';
 import { protect } from '@/lib/access';
 import { paymentBlock } from '@/lib/grn';
@@ -194,8 +195,7 @@ async function handleGET(req: Request, a: Actor) {
 }
 async function handlePOST(req: Request, a: Actor) {
   try {
-    const origin = req.headers.get('origin');
-    if (origin && origin !== new URL(req.url).origin)
+    if (!sameOrigin(req))
       return fail('Origin not allowed', 403);
     const body = await req.text();
     if (body.length > 40000) return fail('Record is too large');

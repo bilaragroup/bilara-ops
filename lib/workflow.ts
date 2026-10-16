@@ -24,7 +24,10 @@ export function validateWorkflow(kind:string,data:any,old:any,parent?:any){
  }
  if(!['plan','request','payment'].includes(kind))return null;
  if(!validWindow(data.window))return 'Execution window must start on a Thursday.';
- if(!dateValid(data.due)||data.due<data.window||data.due>addDays(data.window,6))return 'The planned date must fall within the selected Thursday–Wednesday window. Actual dates are recorded separately.';
+ // A payment's due date sits in its Thursday–Wednesday payment week. A request's required delivery
+ // date can be any day (today or later for new dates); it is not tied to the execution week.
+ if(!dateValid(data.due))return kind==='payment'?'Enter a valid payment due date.':'Enter a valid required delivery date.';
+ if(kind==='payment'&&(data.due<data.window||data.due>addDays(data.window,6)))return 'The payment due date must fall within the selected Thursday–Wednesday week. Actual dates are recorded separately.';
  if(kind==='payment')return null;
  const dateIssue=requestDateIssue(kind,data,old);if(dateIssue)return dateIssue;
  if(kind==='plan'&&(!old||data.window!==old.window)&&plannedWindowRoute(data.window)==='gm'){const reasons=[...new Set([...(data.gmApproval?.reasons||[]),'Late planned request'])];data.gmApproval={...(data.gmApproval||{}),state:'Pending',reasons,window:data.window,cutoff:cutoffFor(data.window)};}

@@ -37,7 +37,7 @@ function recordWrite(a:Actor,b:any,old:any){
 }
 export async function protect(req:Request,cap:string,handler:(req:Request,a:Actor)=>Promise<Response>){try{
  const a=await actor(req.headers,new URL(req.url).hostname==='localhost'&&req.headers.get('x-bilara-test-strict')!=='1');assert(has(a,...(capabilities[cap]||capabilities.read)));
- if(req.method!=='GET'&&req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)throw new AccessError('Origin not allowed.');
+ if(req.method!=='GET'&&!sameOrigin(req))throw new AccessError('Origin not allowed.');
  const all=(await database().prepare('SELECT * FROM records').all()).results.map(decode);
  if(req.method==='POST'&&cap!=='documents'){
   const text=await req.clone().text();if(text.length>70000)throw new AccessError('Request too large.',413);let b:any;try{b=JSON.parse(text);}catch{throw new AccessError('Enter valid JSON.',400);}if(!b||typeof b!=='object'||Array.isArray(b))throw new AccessError('Enter a JSON object.',400);
@@ -63,3 +63,15 @@ export async function protect(req:Request,cap:string,handler:(req:Request,a:Acto
  }
  return res;
  }catch(e){if(!(e instanceof AccessError))console.error(JSON.stringify({event:'authorization_handler_failed',message:e instanceof Error?e.message:String(e)}));return Response.json({error:e instanceof AccessError?e.message:'Unable to complete this request.'},{status:e instanceof AccessError?e.status:503,headers:{'Cache-Control':'no-store'}});}}
+const LOOPBACK=new Set(['localhost','127.0.0.1','[::1]','::1']);
+/** A write must come from this app's own pages. The browser's Origin is compared with the address
+ * the request was made to (Host / X-Forwarded-Host as well as the URL the server sees, which can
+ * differ behind the local dev server or a proxy); on a local copy any loopback name is the same site. */
+export function sameOrigin(req:Request){
+ const origin=req.headers.get('origin');if(!origin)return true;
+ let o:URL;try{o=new URL(origin);}catch{return false;}
+ const u=new URL(req.url);if(o.origin===u.origin)return true;
+ const hosts=[req.headers.get('x-forwarded-host'),req.headers.get('host'),u.host].filter(Boolean).map(h=>String(h).split(',')[0].trim().toLowerCase());
+ if(hosts.includes(o.host.toLowerCase()))return true;
+ return LOOPBACK.has(o.hostname)&&LOOPBACK.has(u.hostname);
+}

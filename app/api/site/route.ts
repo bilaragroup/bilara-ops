@@ -1,3 +1,4 @@
+import {sameOrigin} from '@/lib/access';
 // One endpoint for the site pages (Site Engineer, PM, QC, GM, Purchase), like the QC app's
 // apiCall(action, args): POST {action, args:[...]} or GET ?action=...&projectId=...
 // Sign-in is the purchasing app's; each person has one role, mapped to the site role.
@@ -193,7 +194,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  if (req.headers.get('origin') && req.headers.get('origin') !== new URL(req.url).origin) return Response.json({error: 'Origin not allowed.'}, {status: 403});
+  if (!sameOrigin(req)) return Response.json({error: 'Origin not allowed.'}, {status: 403});
   const text = await req.text();
   if (text.length > 30 * 1024 * 1024) return Response.json({error: 'Request too large.'}, {status: 413});
   let b: any;

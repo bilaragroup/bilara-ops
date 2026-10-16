@@ -1,3 +1,4 @@
+import {sameOrigin} from '@/lib/access';
 import {protect} from '@/lib/access';
 import {Actor,confidential,cleanSettings} from '@/lib/permissions';
 import {database} from '@/lib/database';
@@ -7,7 +8,7 @@ async function handleGET(req:Request,a:Actor){try{const row=await database().pre
 // Only the company milestones (1-5) are offered, even if an older saved list had more.
 values.milestones=(values.milestones||[]).filter((m:any)=>MILESTONE_NUMBERS.includes(String(m)));if(!values.milestones.length)values.milestones=defaultSettings.milestones;return Response.json({values:confidential(a)?values:cleanSettings(values),version:row?.version||0},{headers:{'Cache-Control':'no-store'}});}catch{return Response.json({error:'Settings are unavailable.'},{status:503});}}
 async function handlePOST(req:Request,a:Actor){try{
- if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return Response.json({error:'Origin not allowed'},{status:403});
+ if(!sameOrigin(req))return Response.json({error:'Origin not allowed'},{status:403});
  const text=await req.text();if(text.length>70000)throw Error('Settings are too large.');const b=JSON.parse(text),values=validateSettings({...b.values,projectRates:[]}),db=database(),now=new Date().toISOString();if(!Number.isInteger(b.version)||b.version<0)throw Error('Refresh settings before saving.');
  const old=await db.prepare("SELECT * FROM settings WHERE id='main'").first<any>();if((old?.version||0)!==b.version)return Response.json({error:'Settings changed. Reload before saving.'},{status:409});
  // Rate cards are kept by /api/rate-cards (BOQ Team and Super Admin); a Settings save leaves them as they are.

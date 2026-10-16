@@ -1,3 +1,4 @@
+import {sameOrigin} from '@/lib/access';
 import {protect} from '@/lib/access';
 import {Actor,confidential,visible,inProject,has} from '@/lib/permissions';
 import {database,decode} from '@/lib/database';
@@ -6,7 +7,7 @@ import {closureChecks} from '@/lib/closure';
 const fail=(error:string,status=400)=>Response.json({error},{status});
 const fingerprint="SELECT group_concat(id||':'||version,'|') FROM (SELECT id,version FROM records WHERE id=? OR parent=? OR parent IN (SELECT id FROM records WHERE parent=?) ORDER BY id)";
 async function handlePOST(req:Request,a:Actor){try{
- if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return fail('Origin not allowed',403);
+ if(!sameOrigin(req))return fail('Origin not allowed',403);
  const text=await req.text();if(text.length>12000)return fail('Request too large');const b=JSON.parse(text);const db=database();
  const snapshot=await db.batch([db.prepare('SELECT * FROM records ORDER BY id'),db.prepare('SELECT * FROM documents')]);
  const records=snapshot[0].results.map(decode),docs=snapshot[1].results.map(decodeDocument),r=records.find(x=>x.id===b.id);

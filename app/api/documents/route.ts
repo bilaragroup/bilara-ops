@@ -1,3 +1,4 @@
+import {sameOrigin} from '@/lib/access';
 import {protect} from '@/lib/access';
 import {Actor,confidential,visible,inProject,has} from '@/lib/permissions';
 import {database,decode} from '@/lib/database';
@@ -10,7 +11,7 @@ async function handleGET(req:Request,a:Actor){try{const db=database(),q=new URL(
  const rows=await db.prepare('SELECT * FROM documents ORDER BY created DESC').all();return Response.json({documents:rows.results.map(decodeDocument)},{headers:{'Cache-Control':'no-store'}});
  }catch{return fail('Documents are unavailable. Please retry.',503);}}
 async function handlePOST(req:Request,a:Actor){try{
- if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return fail('Origin not allowed',403);
+ if(!sameOrigin(req))return fail('Origin not allowed',403);
  const bytes=await boundedBody(req,11*1024*1024);const form=await new Response(bytes,{headers:{'Content-Type':req.headers.get('content-type')||''}}).formData();
  const file=form.get('file');const link=String(form.get('driveUrl')||'').trim();if(link&&!validDriveLink(link))return fail('Use an HTTPS Google Drive or Google Docs file link.');if(!link&&(!(file instanceof File)||file.size===0||file.size>10*1024*1024))return fail('Choose a PDF, PNG or JPG file up to 10 MB.');
  const b=JSON.parse(String(form.get('metadata')||'{}'));if(!validProject(b.project)||!validWindow(b.window)||!['Estimate','Final bill','Payment receipt','Site list','Vendor quote'].includes(b.type))return fail('Choose project, Thursday week and document type.');

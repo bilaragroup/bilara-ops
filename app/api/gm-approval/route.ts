@@ -1,9 +1,10 @@
+import {sameOrigin} from '@/lib/access';
 import {protect} from '@/lib/access';
 import {Actor,confidential,visible,inProject,has} from '@/lib/permissions';
 import {database,decode} from '@/lib/database';
 async function handlePOST(req:Request,a:Actor){try{
  const fail=(error:string,status=400)=>Response.json({error},{status});
- if(req.headers.get('origin')&&req.headers.get('origin')!==new URL(req.url).origin)return fail('Origin not allowed',403);
+ if(!sameOrigin(req))return fail('Origin not allowed',403);
  const text=await req.text();if(text.length>40000)return fail('Decision batch too large');const b=JSON.parse(text),db=database(),ids=Array.isArray(b.ids)?[...new Set(b.ids.filter((id:any)=>typeof id==='string'))]:[b.id];
  if(!ids.length||ids.length>100)return fail('Select between 1 and 100 pending requests.');
  const decision=String(b.decision||''),note=String(b.note||'').trim();if(!['Approved','Rejected'].includes(decision)||!note||note.length>2000||b.confirmed!==true)return fail('Enter a decision note and confirm that you are authorized to record it.');

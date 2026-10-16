@@ -737,12 +737,12 @@ export async function parseUpload(
     if (type === 'payment') data.category = data.category || 'Material';
     if (!validProject(data.project)) errors.push('Project must be 100–999.');
     if (!validWindow(data.window)) errors.push('Week must start Thursday.');
+    else if (!data.due) errors.push('Enter the date.');
     else if (
-      !data.due ||
-      data.due < data.window ||
-      data.due > addDays(data.window, 6)
+      type === 'payment' &&
+      (data.due < data.window || data.due > addDays(data.window, 6))
     )
-      errors.push('Date must be within the week.');
+      errors.push('Payment due date must be within the week.');
     if (kind === 'payment' && obj['PO number']) {
       const buys = records.filter(
         (r) =>
