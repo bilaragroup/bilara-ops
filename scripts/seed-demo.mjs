@@ -31,8 +31,8 @@ const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
 const add=(s,n)=>{const x=new Date(s+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};
 const at=(day,hhmm)=>new Date(day+'T'+hhmm+':00+05:30').toISOString();
 const thursday=s=>{const d=new Date(s+'T00:00:00Z');return add(s,-((d.getUTCDay()+3)%7));};
-// Next standard planned week: first Thursday whose cut-off (12 days before, 9 a.m. IST) is still ahead.
-let W=add(thursday(today),7);while(new Date(add(W,-12)+'T09:00:00+05:30')<=new Date())W=add(W,7);
+// Demo week: the first Thursday at least 14 days away (a planned delivery needs 14 days).
+const W=(()=>{const e=add(today,14);return thursday(e)===e?e:add(thursday(e),7);})();
 
 const P={pm:'pm@demo.test',boq:'boq@demo.test',buy:'purchase@demo.test',audit:'audit@demo.test',gm:'gm@demo.test',acc:'accounts@demo.test',se1:'se1@demo.test',se2:'se2@demo.test',qc:'qc@demo.test',qc2:'qc2@demo.test',labour:'labour@demo.test'};
 const people=[[P.pm,'Demo PM (Biju)',['Project Manager']],[P.boq,'Demo BOQ (Subha)',['BOQ Team']],[P.buy,'Demo Purchase (Jithin)',['Purchase Manager']],[P.audit,'Demo Audit (Rijila)',['Audit']],[P.gm,'Demo GM (Sachin)',['GM']],[P.acc,'Demo Accounts (Gokul)',['Accounts']],
@@ -193,18 +193,10 @@ try{
  await raise('902','Red Bricks','NOS',3000,add(W,7),21,{milestone:'2',activityName:'Superstructure brick work up to G/F lintel'});
  done('Step 1 · PM requests waiting for the BOQ team (Laterite Stone; Red Bricks for the week after)');
 
- // 1b. Late request (inside the cut-off) — the GM decides. On some days no week is open for a late
- // request (the next week is already ad hoc); then the demo shows a request above the BOQ quantity instead.
- const ct=thursday(today),lateWeek=[add(W,-7),add(ct,today===ct?7:14)].sort().at(-1);
- if(lateWeek<W){
-  const late=await raise('902','Hitachi','HOUR',16,lateWeek,2,{milestone:'1',activityName:'Foundation excavation',category:'Tools & Equipment',notes:'Raised after the Saturday cut-off: rock found during excavation'});
-  await boqApprove(late,16,false);
-  done(`Step 1b · Late request waiting for the GM (Hitachi, week ${lateWeek})`);
- }else{
-  const over=await raise('902','Hitachi','HOUR',20,W,2,{milestone:'1',activityName:'Foundation excavation',category:'Tools & Equipment',notes:'Rock found during excavation; 4 hours more than the BOQ'});
-  await boqApprove(over,16,false);
-  done(`Step 1b · Request above the BOQ quantity waiting for the GM (Hitachi 20 h against 16 h${(await get(over)).gmApproval?.state==='Pending'?'':' — check: no GM step was created'})`);
- }
+ // 1b. Request above the BOQ quantity — the GM decides.
+ const over=await raise('902','Hitachi','HOUR',20,W,2,{milestone:'1',activityName:'Foundation excavation',category:'Tools & Equipment',notes:'Rock found during excavation; 4 hours more than the BOQ'});
+ await boqApprove(over,16,false);
+ done(`Step 1b · Request above the BOQ quantity waiting for the GM (Hitachi 20 h against 16 h${(await get(over)).gmApproval?.state==='Pending'?'':' — check: no GM step was created'})`);
 
  // 1c. Urgent ad hoc request from site.
  await call('records',{kind:'request',project:'902',item:'Binding wire',unit:'KG',milestone:'1',activity:'4',activityName:'Footing & column rebar',qty:25,boqQty:25,estimateRate:0,owner:'Jithin',itemCategory:'Materials',window:W,due:W,priority:'Urgent',reason:'Ran out during column rebar; work stops without it',requestBatchId:uuid()},P.pm);

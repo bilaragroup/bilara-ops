@@ -9,7 +9,7 @@ const ok=async(...a)=>{const r=await call(...a);assert.equal(r.status,200,JSON.s
 const row=async(id)=>(await call('records')).data.records.find(r=>r.id===id);
 const add=(s,n)=>{const x=new Date(s+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};
 const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
-function normalWindow(now=new Date()){const d=new Date(today+'T00:00:00Z');let w=add(add(today,-((d.getUTCDay()+3)%7)),7);while(new Date(add(w,-12)+'T09:00:00+05:30').getTime()<=now.getTime())w=add(w,7);return w;}
+function normalWindow(now=new Date()){const add=(s,n)=>{const x=new Date(s+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};const t=now.toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}),e=add(t,14),back=(new Date(e+'T00:00:00Z').getUTCDay()+3)%7;return back?add(e,7-back):e;}
 let passed=0;const pass=m=>{passed++;console.log('PASS '+m);};
 const PM='pm@example.invalid';
 try{

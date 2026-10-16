@@ -1,4 +1,4 @@
-import {requestDateIssue,plannedWindowRoute,cutoffFor} from './request-policy';
+import {requestDateIssue,planWindowFor} from './request-policy';
 import {dateValid,validProject} from './calculations';
 import {validWindow,addDays,indiaToday,stageNames} from './weekly';
 export function validateWorkflow(kind:string,data:any,old:any,parent?:any){
@@ -23,6 +23,8 @@ export function validateWorkflow(kind:string,data:any,old:any,parent?:any){
   return null;
  }
  if(!['plan','request','payment'].includes(kind))return null;
+ // A planned request's execution week is the Thursday–Wednesday week of its delivery date.
+ if(kind==='plan'&&dateValid(data.due)&&(!old||data.due!==old.due))data.window=planWindowFor(data.due);
  if(!validWindow(data.window))return 'Execution window must start on a Thursday.';
  // A payment's due date sits in its Thursday–Wednesday payment week. A request's required delivery
  // date can be any day (today or later for new dates); it is not tied to the execution week.
@@ -30,7 +32,6 @@ export function validateWorkflow(kind:string,data:any,old:any,parent?:any){
  if(kind==='payment'&&(data.due<data.window||data.due>addDays(data.window,6)))return 'The payment due date must fall within the selected Thursday–Wednesday week. Actual dates are recorded separately.';
  if(kind==='payment')return null;
  const dateIssue=requestDateIssue(kind,data,old);if(dateIssue)return dateIssue;
- if(kind==='plan'&&(!old||data.window!==old.window)&&plannedWindowRoute(data.window)==='gm'){const reasons=[...new Set([...(data.gmApproval?.reasons||[]),'Late planned request'])];data.gmApproval={...(data.gmApproval||{}),state:'Pending',reasons,window:data.window,cutoff:cutoffFor(data.window)};}
  if(data.gmApproval&&data.gmApproval.state!=='Approved'&&!['Submitted','Rejected'].includes(data.stage||'Submitted'))return 'Record General Manager approval before progressing this request.';
  data.stage=data.stage||'Submitted';
  if(kind==='plan'){data.demandQty=Number(data.boqQty||data.demandQty);if(!Number.isFinite(data.demandQty)||data.demandQty<=0)return 'Enter the PM requested quantity.';}

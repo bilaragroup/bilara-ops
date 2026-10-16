@@ -11,7 +11,7 @@ In the `bilara-ops` folder:
 3. `npm run dev`
 4. In a second terminal: `npm run seed:demo`
 
-Open http://localhost:3000. Use **Testing as** (bottom-left) to become each person below. The demo week is the next planned Thursday–Wednesday week; the Weeks filter (Next 4 weeks) shows it.
+Open http://localhost:3000. Use **Testing as** (bottom-left) to become each person below. The demo week is the first Thursday–Wednesday week at least 14 days away; the Weeks filter (Next 4 weeks) shows it.
 
 If you only want fresh sample data on top of what you have, skip step 2. The seed stops if projects 901/902 already have records.
 
@@ -33,8 +33,8 @@ Projects: **901 Demo – Kakkanad Villa** (SE Sandeep) and **902 Demo – Aluva 
 
 ## 3. The weekly cycle (Thursday to Wednesday)
 
-1. **PM raises a request** for a future week: project, milestone, activity (from the company list of 5 milestones), item, quantity. Cut-off is Saturday 9 am, 12 days before the execution Thursday.
-2. **BOQ team** confirms the approved activity quantity; the BOQ rate comes from the **rate card** (project card, else its range card, else the default card). Late requests and requests above the BOQ quantity go to the **GM** first.
+1. **PM raises a request**: project, milestone, activity (from the company list of 5 milestones), item, quantity and the **required delivery date** — any day of the week, at least **14 days** after the request is sent. The purchase week (Thursday–Wednesday) follows from that date. Anything needed sooner is an **ad hoc** request.
+2. **BOQ team** opens the request (**Review BOQ** in the Requests list) and enters the approved activity quantity. The BOQ rate and purchase target come from the **rate card** automatically (project card, else its range card, else the default card); **Edit · use a custom BOQ rate** overrides it for that request. **Save and release to Purchase**, or tick several ready rows in the list and release them together. Requests above the BOQ quantity go to the **GM** first (the GM ticks and approves them in the same list).
 3. **Purchase** enters vendor, rate, quotation reference and entity on the **Purchase plan** (Review → Edit → Send to Audit).
 4. **Audit** approves, sends back for a better rate, or rejects. No PO before approval.
 5. **Purchase** creates one **PO** per vendor (Wednesday). A payment forecast is created from delivery and credit days.
@@ -50,8 +50,8 @@ On site, every day: the **PM sets tomorrow's targets**, the **SE files the morni
 
 | # | What to look at | Sign in as | Where |
 |---|---|---|---|
-| 1 | Two new requests waiting for BOQ (Laterite Stone 901; Red Bricks 902 for the week after) | BOQ | Purchase requests → release queue at the top; sidebar counter |
-| 1b | Hitachi request needing the GM (late, or 20 h against a BOQ of 16 h) | GM | Purchase requests → approval queue |
+| 1 | Two new requests waiting for BOQ (Laterite Stone 901; Red Bricks 902 for the week after) | BOQ | Purchase requests → "waiting for you" bar and **Review BOQ** on the row; sidebar counter |
+| 1b | Hitachi request needing the GM (20 h against a BOQ of 16 h) | GM | Purchase requests → tick the row → Approve |
 | 1c | **Urgent** ad hoc request: Binding wire for 902 — the sidebar counter is **red** | BOQ | Ad hoc requests |
 | 2 | PSand approved by BOQ, waiting for vendor rates | Purchase | Purchase plan → Project 901 → Review → Edit |
 | 3 | 20 mm Metal (below target) and 12 mm Steel (above BOQ, flagged) with Audit | Audit | Audit review |
@@ -77,7 +77,8 @@ On site, every day: the **PM sets tomorrow's targets**, the **SE files the morni
 - As **SE Sandeep**: receive the Cement PO (try accepting less than delivered).
 - As **Accounts**: check the MSand invoice (500 billed, 480 accepted) — the mismatch blocks payment until a corrected bill or GM/Audit approval.
 - As **Meera**: accept the re-site visit, open it (satisfactory items carry over), fix the defect item and submit — the checklist moves to Completed.
-- As **PM**: raise a new request; note the activity list only shows activities of the chosen milestone.
+- As **BOQ**: Review BOQ on Laterite Stone — the rate is already there from the card; try a custom rate and see the target change; Save and release.
+- As **PM**: raise a new request; the activity list only shows activities of the chosen milestone, and the delivery date can be any day 14 or more days ahead.
 
 ## 6. Sample documents included
 

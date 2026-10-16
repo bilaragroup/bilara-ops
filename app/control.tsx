@@ -13,7 +13,7 @@ const TRADES = ['Structural', 'Electrical', 'Plumbing'];
 import { defaultSettings } from '@/lib/settings';
 import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
-import ApprovalQueue from './approval-queue';
+import BoqReview, { waitingOn, waitingText, decide } from './boq-review';
 import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
 import PeriodPicker from './period-picker';
@@ -180,13 +180,15 @@ function Field({
             : name === 'due' && ['plan', 'request'].includes(draft.kind)
               ? draft.due < today() && draft.id
                 ? undefined
-                : draft.window > today()
-                  ? draft.window
+                : draft.kind === 'plan'
+                  ? requestPolicy().earliest
                   : today()
               : undefined
         }
         max={
-          name === 'due' && draft.window ? addDays(draft.window, 6) : undefined
+          name === 'due' && draft.kind === 'payment' && draft.window
+            ? addDays(draft.window, 6)
+            : undefined
         }
         inputMode={name === 'project' ? 'numeric' : undefined}
         pattern={name === 'project' ? '[1-9][0-9]{2}' : undefined}
@@ -199,7 +201,16 @@ function Field({
         value={
           valueOverride !== undefined ? valueOverride : (draft[name] ?? '')
         }
-        onChange={(e) => set({ ...draft, [name]: e.target.value })}
+        onChange={(e) =>
+          set({
+            ...draft,
+            [name]: e.target.value,
+            // A planned request's purchase week follows its delivery date.
+            ...(name === 'due' && draft.kind === 'plan' && /^\d{4}-\d{2}-\d{2}$/.test(e.target.value)
+              ? { window: thursday(e.target.value) }
+              : {}),
+          })
+        }
       />
     </label>
   );
@@ -368,6 +379,11 @@ export default function Control({ user, testUserSwitch }: any) {
     canSeeRates = canPrivate || canPurchase,
     boqOnly = user.roles.includes('BOQ Team') && !has(user, 'GM', 'Audit', 'Purchase Manager', 'Purchase Team', 'Accounts', 'Project Manager');
   const [referenceRates, setReferenceRates] = useState<any[]>([]);
+  // Rows the BOQ team or GM ticked in the Requests table to release / approve together.
+  const [picked, setPicked] = useState<string[]>([]),
+    [queueNote, setQueueNote] = useState(''),
+    [queueBusy, setQueueBusy] = useState(false),
+    [queueMsg, setQueueMsg] = useState<{ tone: string; text: string } | null>(null);
   const canStart = (k: string, extra: any = {}) =>
     k === 'settle'
       ? canPay
@@ -645,10 +661,11 @@ export default function Control({ user, testUserSwitch }: any) {
     }
     setFormError('');
     const isNewPlan = k === 'plan' && !extra.id,
-      planWindow =
-        plannedWindowRoute(window) === 'adhoc'
-          ? requestPolicy().normal
-          : window;
+      planDue = [
+        plannedWindowRoute(window) === 'adhoc' ? requestPolicy().normal : window,
+        requestPolicy().earliest,
+      ].sort()[1],
+      planWindow = thursday(planDue);
     setDraft({
       accountsBy: user.name,
       auditOwner: user.name,
@@ -656,7 +673,7 @@ export default function Control({ user, testUserSwitch }: any) {
       window: k === 'plan' ? planWindow : window,
       due:
         k === 'plan'
-          ? planWindow
+          ? planDue
           : k === 'request' && window < today()
             ? today()
             : window,
@@ -974,8 +991,84 @@ export default function Control({ user, testUserSwitch }: any) {
     );
   }
   function liveRows() {
+    const queueOn = ['plan', 'request'].includes(tab) && has(user, 'BOQ Team', 'GM');
+    const waitingRows = queueOn ? active.filter((r) => waitingOn(user, r)) : [];
+    const pickable = waitingRows.filter((r) => ['gm', 'boq-release'].includes(waitingOn(user, r)));
+    const chosen = pickable.filter((r) => picked.includes(r.id));
+    const needQty = waitingRows.filter((r) => ['boq-qty', 'boq-rate'].includes(waitingOn(user, r))).length;
+    const runQueue = async (decision: 'Approved' | 'Rejected') => {
+      if (!chosen.length) return;
+      if (decision === 'Rejected' && !queueNote.trim()) {
+        setQueueMsg({ tone: 'red', text: 'Write a note saying why the selected requests are rejected.' });
+        return;
+      }
+      setQueueBusy(true);
+      setQueueMsg(null);
+      try {
+        const note =
+          queueNote.trim() ||
+          (chosen.every((r) => waitingOn(user, r) === 'gm') ? 'Approved by GM' : 'BOQ baseline released');
+        const res: any = await decide(chosen.map((r) => r.id), decision, note);
+        const n = res.count || chosen.length;
+        setPicked([]);
+        setQueueNote('');
+        setQueueMsg({ tone: 'green', text: `${n} request${n === 1 ? '' : 's'} ${decision === 'Approved' ? 'released / approved' : 'rejected'}.` });
+        await refresh();
+      } catch (e) {
+        setQueueMsg({ tone: 'red', text: e instanceof Error ? e.message : String(e) });
+      } finally {
+        setQueueBusy(false);
+      }
+    };
     return (
       <>
+        {queueOn && (waitingRows.length > 0 || queueMsg) && (
+          <div className="queue-bar" role="region" aria-label="Waiting for you">
+            <div>
+              <b>{waitingRows.length} waiting for you</b>
+              <small>
+                {[
+                  needQty ? `${needQty} need the approved BOQ quantity (Review BOQ)` : '',
+                  pickable.length ? `${pickable.length} ready to ${pickable.every((r) => waitingOn(user, r) === 'gm') ? 'approve' : 'release'} — tick them below` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </small>
+            </div>
+            {pickable.length > 0 && (
+              <button
+                className="secondary"
+                disabled={queueBusy}
+                onClick={() => setPicked(chosen.length === pickable.length ? [] : pickable.map((r) => r.id))}
+              >
+                {chosen.length === pickable.length ? 'Clear selection' : `Select all ready (${pickable.length})`}
+              </button>
+            )}
+            {chosen.length > 0 && (
+              <>
+                <input
+                  className="queue-note"
+                  value={queueNote}
+                  onChange={(e) => setQueueNote(e.target.value)}
+                  maxLength={2000}
+                  placeholder="Note (needed to reject)"
+                  aria-label="Decision note"
+                />
+                <button className="primary" disabled={queueBusy} onClick={() => runQueue('Approved')}>
+                  {chosen.every((r) => waitingOn(user, r) === 'gm') ? 'Approve' : 'Release'} {chosen.length} selected
+                </button>
+                <button className="secondary" disabled={queueBusy} onClick={() => runQueue('Rejected')}>
+                  Reject {chosen.length}
+                </button>
+              </>
+            )}
+            {queueMsg && (
+              <p className={'alert ' + queueMsg.tone} role={queueMsg.tone === 'red' ? 'alert' : 'status'}>
+                {queueMsg.text}
+              </p>
+            )}
+          </div>
+        )}
         <div className="tablebar">
           <div>
             <h2>
@@ -1031,6 +1124,7 @@ export default function Control({ user, testUserSwitch }: any) {
         <Table>
           <TableHeader>
             <TableRow>
+              {queueOn && <TableHead aria-label="Select" />}
               {[
                 'Project / item',
                 tab === 'payment'
@@ -1061,6 +1155,20 @@ export default function Control({ user, testUserSwitch }: any) {
               const m = planMetrics(r, buys);
               return (
                 <TableRow key={r.id}>
+                  {queueOn && (
+                    <TableCell>
+                      {['gm', 'boq-release'].includes(waitingOn(user, r)) && (
+                        <input
+                          type="checkbox"
+                          aria-label={'Select ' + r.item}
+                          checked={picked.includes(r.id)}
+                          onChange={(e) =>
+                            setPicked(e.target.checked ? [...picked, r.id] : picked.filter((id) => id !== r.id))
+                          }
+                        />
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <button className="rowlink" onClick={() => setSelected(r)}>
                       <b>{r.item}</b>
@@ -1124,6 +1232,11 @@ export default function Control({ user, testUserSwitch }: any) {
                                   : r.stage === 'Cancelled'
                                     ? 'Cancelled'
                                     : 'Preparing'}
+                        {queueOn && waitingOn(user, r) && (
+                          <span className={'tag ' + (['boq-qty', 'boq-rate'].includes(waitingOn(user, r)) ? 'red' : 'amber')}>
+                            {waitingText[waitingOn(user, r)]}
+                          </span>
+                        )}
                         <small>
                           {r.quantityControl?.excess
                             ? `Variation +${r.quantityControl.excess} ${r.unit}`
@@ -1172,7 +1285,9 @@ export default function Control({ user, testUserSwitch }: any) {
                         >
                           {r.stage === 'Audit approved'
                             ? 'View vendor orders'
-                            : 'Open request'}
+                            : queueOn && ['boq-qty', 'boq-rate', 'boq-release'].includes(waitingOn(user, r))
+                              ? 'Review BOQ'
+                              : 'Open request'}
                         </button>
                       ) : tab === 'purchase' ? (
                         r.total -
@@ -1211,7 +1326,11 @@ export default function Control({ user, testUserSwitch }: any) {
                       ) : r.status === 'Pending' ? (
                         <button
                           className="textbutton"
-                          onClick={() => start('request', r)}
+                          onClick={() =>
+                            has(user, 'BOQ Team') && waitingOn(user, r).startsWith('boq')
+                              ? setSelected(r)
+                              : start('request', r)
+                          }
                         >
                           Review
                         </button>
@@ -1644,15 +1763,6 @@ export default function Control({ user, testUserSwitch }: any) {
                   </DialogContent>
                 </Dialog>
               )}
-              {t === 'plan' && (canGM || has(user, 'BOQ Team')) && (
-                <ApprovalQueue period={period}
-                  gm={canGM}
-                  records={records}
-                  project={project}
-                  window={window}
-                  refresh={refresh}
-                />
-              )}
               {tab === 'payment' && (
                 <details className="panel finalize-section">
                   <summary>Finalize this week's forecast</summary>
@@ -2023,8 +2133,23 @@ export default function Control({ user, testUserSwitch }: any) {
                       })()}
                     </div>
                   )}
+                {has(user, 'BOQ Team') &&
+                  ['plan', 'request'].includes(selected.kind) &&
+                  selected.stage === 'Submitted' &&
+                  selected.gmApproval?.state !== 'Pending' &&
+                  selected.closure?.state !== 'Closed' && (
+                    <BoqReview
+                      key={selected.id + ':' + selected.version}
+                      request={selected}
+                      records={records}
+                      settings={settings.values}
+                      refresh={refresh}
+                      onDone={() => setSelected(null)}
+                    />
+                  )}
                 <div className="actions">
                   {canStart(selected.kind, selected) &&
+                  !boqOnly &&
                   (selected.kind !== 'request' ||
                     selected.status === 'Pending') ? (
                     <button
@@ -2160,10 +2285,7 @@ export default function Control({ user, testUserSwitch }: any) {
           </DialogDescription>
           {draft?.kind === 'plan' && (
             <p className="footnote">
-              Normal execution: {requestPolicy().normal} onwards
-              {requestPolicy().late < requestPolicy().normal
-                ? ' · ' + requestPolicy().late + ' needs GM approval'
-                : ''}
+              Planned delivery: any day from {requestPolicy().earliest} (14 days from today). Anything sooner is an ad hoc request.
             </p>
           )}
           {draft?.lines ? (
@@ -2447,7 +2569,9 @@ export default function Control({ user, testUserSwitch }: any) {
                       <span>
                         {draft.kind === 'request'
                           ? 'Include in purchase cycle (week starting Thursday) *'
-                          : 'Execution / payment window starts Thursday *'}
+                          : draft.kind === 'plan'
+                            ? 'Purchase week (follows the delivery date)'
+                            : 'Payment week starts Thursday *'}
                       </span>
                       {draft.kind === 'request' && !baselineLocked(draft) && (
                         <span className="cycle-picks">
@@ -2476,8 +2600,8 @@ export default function Control({ user, testUserSwitch }: any) {
                         }
                         required
                         readOnly={
-                          ['plan', 'request'].includes(draft.kind) &&
-                          !!baselineLocked(draft)
+                          draft.kind === 'plan' ||
+                          (draft.kind === 'request' && !!baselineLocked(draft))
                         }
                         onChange={(next) =>
                           setDraft({
@@ -3035,7 +3159,7 @@ function MultiItemRequest({
         String(r.item).trim().toLowerCase() ===
           String(item).trim().toLowerCase(),
     );
-  const route = plannedWindowRoute(draft.window);
+  const early = !draft.due || draft.due < requestPolicy().earliest;
   return (
     <form onSubmit={submit}>
       <fieldset disabled={busy}>
@@ -3080,36 +3204,25 @@ function MultiItemRequest({
             />
           </label>
           <label className="field">
-            <span>Execution week starts Thursday *</span>
-            <WeekInput
-              name="window"
-              value={draft.window}
-              min={requestPolicy().late}
+            <span>Required delivery date *</span>
+            <input
+              type="date"
+              name="due"
               required
-              onChange={(next: string) =>
-                setDraft({
-                  ...draft,
-                  window: next,
-                  due: draft.due && draft.due >= today() ? draft.due : next,
-                })
-              }
+              min={requestPolicy().earliest}
+              value={draft.due || ''}
+              onChange={(e) => {
+                const due = e.target.value;
+                setDraft({ ...draft, due, window: /^\d{4}-\d{2}-\d{2}$/.test(due) ? thursday(due) : draft.window });
+              }}
             />
+            <small>Any day of the week, at least 14 days from today.</small>
           </label>
-          <output
-            className={'full alert ' + (route === 'gm' ? 'amber' : 'green')}
-          >
-            {route === 'gm'
-              ? 'This is a late planned week. Submission will be marked Awaiting GM approval.'
-              : 'Standard planned week. GM approval is not required.'}
+          <output className={'full alert ' + (early ? 'red' : 'green')}>
+            {early
+              ? `Less than 14 days away. Choose ${requestPolicy().earliest} or later, or raise an ad hoc request.`
+              : `Planned request · delivery ${draft.due} · purchase week ${weekLabel(draft.window)} (Thursday–Wednesday).`}
           </output>
-          <Field
-            name="due"
-            label="Required delivery date"
-            type="date"
-            required
-            draft={draft}
-            set={setDraft}
-          />
         </div>
         <div className="request-lines">
           <div className="tablebar">

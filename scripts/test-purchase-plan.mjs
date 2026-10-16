@@ -10,14 +10,8 @@ const rows=async(email)=>(await call('records',undefined,email)).data.records;
 const row=async(id,email)=>(await rows(email)).find(r=>r.id===id);
 let passed=0;const pass=(m)=>{passed++;console.log('PASS '+m);};
 
-// Next standard planned window: first Thursday whose cutoff (12 days before, 09:00 IST) is still ahead.
-function normalWindow(now=new Date()){
- const today=now.toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});const d=new Date(today+'T00:00:00Z');
- const add=(s,n)=>{const x=new Date(s+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};
- let w=add(add(today,-((d.getUTCDay()+3)%7)),7);
- while(new Date(add(w,-12)+'T09:00:00+05:30').getTime()<=now.getTime())w=add(w,7);
- return w;
-}
+// First planned week: the first Thursday at least 14 days away (planned delivery needs 14 days).
+function normalWindow(now=new Date()){const add=(s,n)=>{const x=new Date(s+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};const t=now.toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}),e=add(t,14),back=(new Date(e+'T00:00:00Z').getUTCDay()+3)%7;return back?add(e,7-back):e;}
 const PM='pm@example.invalid',BOQ='boq@example.invalid',BUY='pmgr@example.invalid',AUD='audit@example.invalid',GM='gm@example.invalid',SE='se@example.invalid',SE2='se2@example.invalid',QC='qc@example.invalid';
 try{
  for(const [email,name,roles] of [[PM,'QA PM',['Project Manager']],[BOQ,'QA BOQ',['BOQ Team']],[BUY,'QA Purchase Manager',['Purchase Manager']],[AUD,'QA Auditor',['Audit']],[GM,'QA GM',['GM']],[SE,'QA SE',['Site Engineer']],[SE2,'QA SE 2',['Site Engineer']],[QC,'QA QC',['QC']]])await ok('users',{email,name,roles,projects:[],active:1,version:0});

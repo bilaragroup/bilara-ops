@@ -441,9 +441,15 @@ async function handlePOST(req: Request, a: Actor) {
         )
           return fail('Choose ' + field + ' from Settings.');
       }
-      const catalogue = !old
-        ? findProjectRate(options, data.project, data.item, data.unit)
-        : null;
+      // New requests take the BOQ rate from the rate card. A submitted request that still has
+      // no rate (no card when it was raised) picks it up when the BOQ team reviews it.
+      const catalogue =
+        !old ||
+        (confidential(a) &&
+          old.stage === 'Submitted' &&
+          !(Number(data.boqOriginalRate) > 0))
+          ? findProjectRate(options, data.project, data.item, data.unit)
+          : null;
       if (catalogue) {
         data.boqOriginalRate = catalogue.originalRate;
         data.targetDiscountPercent = catalogue.discountPercent;
@@ -475,7 +481,21 @@ async function handlePOST(req: Request, a: Actor) {
           ) / 100;
         if (kind === 'plan') data.boqRate = target;
         else data.estimateRate = target;
+        if (old && Number(old.boqOriginalRate) !== data.boqOriginalRate) {
+          // Same rate as the card → still the card; anything else is a custom BOQ rate.
+          const card = findProjectRate(options, data.project, data.item, data.unit);
+          if (card && card.originalRate === data.boqOriginalRate) {
+            data.rateSource = 'Project rate catalogue';
+            data.rateCard = rateCardLabel(card);
+          } else {
+            data.rateSource = 'Custom BOQ rate';
+            data.rateCard = '';
+            if (!data.boqOwner || data.boqOwner === 'Rate catalogue')
+              data.boqOwner = a.name || a.email;
+          }
+        }
         data.rateSource = data.rateSource || 'BOQ exception';
+        if (!data.boqOwner && old) data.boqOwner = a.name || a.email;
       }
       // Trade of the work: Structural (default), Electrical or Plumbing.
       data.trade = data.trade ? String(data.trade).trim() : old?.trade || 'Structural';
