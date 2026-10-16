@@ -421,6 +421,8 @@ export default function Control({ user, testUserSwitch }: any) {
     }),
     [projectConfigs, setProjectConfigs] = useState<any[]>([]);
   useEffect(() => {
+    // Labour manager, HR and contractors use site pages only; they have no purchasing settings to read.
+    if (['LABOR_MANAGER', 'HR', 'CONTRACTOR'].includes(siteRoleOf(user.roles))) return;
     Promise.all([fetch('/api/settings'), fetch('/api/projects')])
       .then(async ([sr, pr]) => {
         const s: any = await sr.json(),
@@ -1293,7 +1295,7 @@ export default function Control({ user, testUserSwitch }: any) {
               ['settings', 'Settings', ShieldCheck],
             ]
               // Site Engineers and QC engineers work mostly on site pages: show them first.
-              .sort((x: any, y: any) => { const first = siteRole === 'SITE_ENGINEER' ? ['site-dpr', 'grn', 'site-stock'] : siteRole === 'QC' ? ['site-qc', 'site-dpr', 'grn', 'site-stock'] : []; return Number(first.includes(String(y[0]))) - Number(first.includes(String(x[0]))); })
+              .sort((x: any, y: any) => { const first = siteRole === 'SITE_ENGINEER' ? ['site-dpr', 'grn', 'site-stock'] : siteRole === 'QC' ? ['site-qc', 'site-dpr', 'grn', 'site-stock'] : []; const rank = (k: any) => { const i = first.indexOf(String(k)); return i < 0 ? first.length : i; }; return rank(x[0]) - rank(y[0]); })
               .filter(
                 ([v]) =>
                   (!['projects', 'users', 'settings'].includes(String(v)) ||

@@ -12,7 +12,8 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "db:generate": "drizzle-kit generate",
-    "seed:demo": "node scripts/seed-demo.mjs"
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "demo:reset": "node scripts/reset-local.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
