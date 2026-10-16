@@ -11,7 +11,7 @@ export function weekData(records:any[],window:string|Period,project='all'){
  const inSel=(w:string|null)=>typeof window==='string'?w===window:inPeriod(w,window);
  const chosen=records.filter(r=>(project==='all'||r.project===project)&&inSel(recordWindow(r,records)));
  const requirements=chosen.filter(r=>['plan','request'].includes(r.kind));const purchases=chosen.filter(r=>r.kind==='purchase');const payments=chosen.filter(r=>r.kind==='payment');
- const projects=[...new Set(chosen.map(r=>r.project))].sort().map(project=>{const rs=requirements.filter(r=>r.project===project),bs=purchases.filter(r=>r.project===project),ps=payments.filter(r=>r.project===project);return {project,requirements:rs.length,pending:rs.filter(r=>r.stage!=='Audit approved'&&r.stage!=='Rejected').length,cash:ps.reduce((n,p)=>n+p.total-p.paid,0),paid:ps.reduce((n,p)=>n+p.paid,0),scheduled:ps.reduce((n,p)=>n+p.total,0),commitment:bs.reduce((n,p)=>n+purchaseCost(p).cash,0)};});
+ const projects=[...new Set(chosen.map(r=>r.project))].sort().map(project=>{const rs=requirements.filter(r=>r.project===project),bs=purchases.filter(r=>r.project===project),ps=payments.filter(r=>r.project===project);return {project,requirements:rs.length,pending:rs.filter(r=>!['Audit approved','Rejected','Cancelled'].includes(r.stage)).length,cash:ps.reduce((n,p)=>n+p.total-p.paid,0),paid:ps.reduce((n,p)=>n+p.paid,0),scheduled:ps.reduce((n,p)=>n+p.total,0),commitment:bs.reduce((n,p)=>n+purchaseCost(p).cash,0)};});
  return {requirements,purchases,payments,projects,total:payments.reduce((n,p)=>n+p.total-p.paid,0),paid:payments.reduce((n,p)=>n+p.paid,0)};
 }
 

@@ -38,6 +38,7 @@ export function validateWorkflow(kind:string,data:any,old:any,parent?:any){
  if(old&&previous==='Audit approved'&&(data.entity||'GROUP')!==(old.entity||'GROUP'))return 'The audited purchasing entity is frozen. Submit a new request for a different entity.';
  if(old&&kind==='request'&&['BOQ priced','Vendors finalized','Audit approved'].includes(previous)&&['qty','estimateRate'].some(k=>Number(data[k])!==Number(old[k])))return 'The priced ad hoc quantity and BOQ rate are frozen.';
  if(old&&previous==='Rejected')return 'Rejected requirements are preserved. Submit a new requirement.';
+ if(old&&previous==='Cancelled')return 'Cancelled requests are preserved. Submit a new requirement.';
  if(old&&['BOQ priced','Vendors finalized','Audit approved'].includes(previous)&&['boqQty','boqRate','unit','project','item','milestone','activity','activityName','activityBoqQty','window'].some(k=>String(data[k]??'')!==String(old[k]??'')))return 'The priced BOQ baseline and execution window are frozen. Submit a new change request.';
  if(old&&previous==='Audit approved'&&['qty','demandQty','quoteRate','vendor','stage'].some(k=>String(data[k]??'')!==String(old[k]??'')))return 'Audited commercial terms are frozen. Submit a new change request.';
  if(['BOQ priced','Vendors finalized','Audit approved'].includes(data.stage)){

@@ -6,6 +6,10 @@ import { has, confidential } from '@/lib/permissions';
 import RecordSummary from './record-summary';
 import SettingsPage from './settings';
 import RateCards from './rate-cards';
+import CancelRequest from './cancel-request';
+import RequestDownload from './request-download';
+import ForecastSummary from './forecast-summary';
+const TRADES = ['Structural', 'Electrical', 'Plumbing'];
 import { defaultSettings } from '@/lib/settings';
 import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
@@ -45,6 +49,7 @@ import {
   inPeriod,
   singleWeek,
   weekLabel,
+  thursday,
   type Period,
   stageNames,
   addDays,
@@ -391,6 +396,7 @@ export default function Control({ user, testUserSwitch }: any) {
     [sheet, setSheet] = useState('SEPT 07 - SEPT 14'),
     [project, setProject] = useState('all'),
     [milestoneFilter, setMilestoneFilter] = useState('all'),
+    [tradeFilter, setTradeFilter] = useState('all'),
     [activityFilter, setActivityFilter] = useState(''),
     [query, setQuery] = useState(''),
     [carryOpen, setCarryOpen] = useState(false),
@@ -525,6 +531,7 @@ export default function Control({ user, testUserSwitch }: any) {
   const matches = (r: any) =>
     (project === 'all' || r.project === project) &&
     (milestoneFilter === 'all' || String(r.milestone) === milestoneFilter) &&
+    (tradeFilter === 'all' || !['plan', 'request'].includes(r.kind) || (r.trade || 'Structural') === tradeFilter) &&
     (!activityFilter || String(r.activity) === activityFilter.trim()) &&
     (tab === 'payment'
       ? recordWindow(r, records) === window
@@ -1079,7 +1086,9 @@ export default function Control({ user, testUserSwitch }: any) {
                                 ? 'Awaiting approval'
                                 : r.stage === 'Rejected'
                                   ? 'Rejected'
-                                  : 'Preparing'}
+                                  : r.stage === 'Cancelled'
+                                    ? 'Cancelled'
+                                    : 'Preparing'}
                         <small>
                           {r.quantityControl?.excess
                             ? `Variation +${r.quantityControl.excess} ${r.unit}`
@@ -1315,6 +1324,9 @@ export default function Control({ user, testUserSwitch }: any) {
                 <CalendarClock size={16} /> Work slipped?
               </button>
             )}
+            {['plan', 'request'].includes(tab) && has(user, 'BOQ Team', 'GM', 'Audit') && (
+              <RequestDownload records={records} period={period} />
+            )}
             {['plan', 'request'].includes(tab) && canStart(tab) && !(tab === 'plan' && reqView === 'pe') && (
               <button
                 className="primary"
@@ -1367,6 +1379,15 @@ export default function Control({ user, testUserSwitch }: any) {
                           milestoneLabel(v),
                         ]),
                       ]}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Trade</span>
+                    <Choice
+                      label="Trade"
+                      value={tradeFilter}
+                      onChange={setTradeFilter}
+                      options={[['all', 'All trades'], ...TRADES.map((t) => [t, t])]}
                     />
                   </label>
                   <label className="field">
@@ -1657,6 +1678,9 @@ export default function Control({ user, testUserSwitch }: any) {
                     refresh={refresh}
                   />
                 )}
+              {tab === 'payment' && (
+                <ForecastSummary records={records} window={window} project={project} />
+              )}
               {tab === 'payment' && (
                 <ForecastRequests
                   records={records}
@@ -2015,6 +2039,14 @@ export default function Control({ user, testUserSwitch }: any) {
                     refresh={refresh}
                   />
                 )}
+                {['plan', 'request'].includes(selected.kind) && (
+                  <CancelRequest
+                    request={selected}
+                    records={records}
+                    refresh={refresh}
+                    canCancel={has(user, 'GM', 'Audit', 'Project Manager')}
+                  />
+                )}
                 {(canPurchase || canPay || canGM) &&
                   ['plan', 'request'].includes(selected.kind) && (
                     <details className="completion-details">
@@ -2223,6 +2255,15 @@ export default function Control({ user, testUserSwitch }: any) {
                         draft={draft}
                         set={setDraft}
                       />
+                      <label className="field">
+                        <span>Trade</span>
+                        <Choice
+                          label="Trade"
+                          value={draft.trade || 'Structural'}
+                          onChange={(v: string) => setDraft({ ...draft, trade: v })}
+                          options={TRADES.map((t) => [t, t])}
+                        />
+                      </label>
                       {canPrivate ? (
                         <Field
                           name="activityBoqQty"
@@ -2347,7 +2388,28 @@ export default function Control({ user, testUserSwitch }: any) {
                   )}
                   {['plan', 'request', 'payment'].includes(draft.kind) && (
                     <label className="field">
-                      <span>Execution / payment window starts Thursday *</span>
+                      <span>
+                        {draft.kind === 'request'
+                          ? 'Include in purchase cycle (week starting Thursday) *'
+                          : 'Execution / payment window starts Thursday *'}
+                      </span>
+                      {draft.kind === 'request' && !baselineLocked(draft) && (
+                        <span className="cycle-picks">
+                          {[0, 7, 14].map((d) => {
+                            const w = addDays(thursday(today()), d);
+                            return (
+                              <button
+                                type="button"
+                                key={w}
+                                className={'secondary' + (draft.window === w ? ' chosen' : '')}
+                                onClick={() => setDraft({ ...draft, window: w, due: draft.due >= w && draft.due <= addDays(w, 6) && draft.due >= today() ? draft.due : w < today() ? today() : w })}
+                              >
+                                {d === 0 ? 'This week' : d === 7 ? 'Next week' : 'Week after'} · {weekLabel(w)}
+                              </button>
+                            );
+                          })}
+                        </span>
+                      )}
                       <WeekInput
                         name="window"
                         value={draft.window}
@@ -2368,7 +2430,9 @@ export default function Control({ user, testUserSwitch }: any) {
                             due:
                               draft.due >= next && draft.due <= addDays(next, 6)
                                 ? draft.due
-                                : next,
+                                : draft.kind === 'request' && next < today()
+                                  ? today()
+                                  : next,
                           })
                         }
                       />
@@ -2875,7 +2939,7 @@ function BoqQuantityNote({ records = [], project, milestone, activity, item, uni
       </p>
     );
   const used = same.reduce(
-    (n: number, r: any) => n + Number(r.requestedQty || r.boqQty || r.qty || 0),
+    (n: number, r: any) => n + (r.stage === 'Cancelled' ? Number(r.requestCancellation?.keptQty || 0) : Number(r.requestedQty || r.boqQty || r.qty || 0)),
     0,
   );
   const left = baseline - used;
@@ -2939,6 +3003,15 @@ function MultiItemRequest({
             draft={draft}
             set={setDraft}
           />
+          <label className="field">
+            <span>Trade *</span>
+            <Choice
+              label="Trade"
+              value={draft.trade || 'Structural'}
+              onChange={(v: string) => change('trade', v)}
+              options={TRADES.map((t) => [t, t])}
+            />
+          </label>
           <label className="field">
             <span>Owner *</span>
             <Choice

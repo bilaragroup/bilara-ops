@@ -15,7 +15,7 @@ import CarryForward from './carry-forward';
 type Edit={vendor:string;vendorPhone:string;quoteRate:string;quoteReference:string;entity:string;version?:number};
 const editable=(r:any)=>r.stage==='BOQ priced'&&r.closure?.state!=='Closed';
 const fromRecord=(r:any):Edit=>({version:r.version,vendor:r.vendor||'',vendorPhone:r.vendorPhone||'',quoteRate:r.quoteRate===''||r.quoteRate==null?'':String(r.quoteRate),quoteReference:r.quoteReference||'',entity:r.entity||'GROUP'});
-const stageTag=(r:any)=>r.stage==='Audit approved'?<span className="tag green">Audit approved</span>:r.stage==='Vendors finalized'?<span className="tag amber">With Audit</span>:r.stage==='Rejected'?<span className="tag red">Rejected</span>:r.auditReturn?<span className="tag red">Sent back by Audit</span>:<span className="tag">To price</span>;
+const stageTag=(r:any)=>r.stage==='Audit approved'?<span className="tag green">Audit approved</span>:r.stage==='Vendors finalized'?<span className="tag amber">With Audit</span>:r.stage==='Rejected'?<span className="tag red">Rejected</span>:r.stage==='Cancelled'?<span className="tag red">Cancelled</span>:r.auditReturn?<span className="tag red">Sent back by Audit</span>:<span className="tag">To price</span>;
 
 export default function PurchasePlan({records,project,window,period,refresh,openRecord}:any){
  const per:Period=period||{key:'week',from:window,to:window},multi=!singleWeek(per);

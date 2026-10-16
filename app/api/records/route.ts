@@ -137,6 +137,7 @@ for (const kind of ['plan', 'request'])
     'targetDiscountPercent',
     'rateSource',
     'rateCard',
+    'trade',
     'vendor',
     'vendorPhone',
     'quoteRate',
@@ -476,6 +477,10 @@ async function handlePOST(req: Request, a: Actor) {
         else data.estimateRate = target;
         data.rateSource = data.rateSource || 'BOQ exception';
       }
+      // Trade of the work: Structural (default), Electrical or Plumbing.
+      data.trade = data.trade ? String(data.trade).trim() : old?.trade || 'Structural';
+      if (!['Structural', 'Electrical', 'Plumbing'].includes(data.trade))
+        return fail('Trade must be Structural, Electrical or Plumbing.');
       data.milestone = String(data.milestone).trim();
       data.activity = String(data.activity).trim();
       data.activityName = String(data.activityName).trim();
@@ -555,8 +560,15 @@ async function handlePOST(req: Request, a: Actor) {
           ...sameActivity.map((r) => Number(r.activityRequestNo) || 0),
         ) + 1;
       data.activityRequestCode = data.activity + '.' + data.activityRequestNo;
+      // Rejected lines use nothing; a cancelled line keeps only what was delivered before cancelling.
       const previousRequested = sameItem.reduce(
-          (n, r) => n + Number(r.requestedQty || r.boqQty || r.qty || 0),
+          (n, r) =>
+            n +
+            (r.stage === 'Rejected'
+              ? 0
+              : r.stage === 'Cancelled'
+                ? Number(r.requestCancellation?.keptQty || 0)
+                : Number(r.requestedQty || r.boqQty || r.qty || 0)),
           0,
         ),
         currentRequested = Number(

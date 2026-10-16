@@ -14,14 +14,19 @@ export default function CarryForward({records,project,window,period,refresh,inli
  const ordered=useMemo(()=>new Set(records.filter((r:any)=>r.kind==='purchase'&&r.status!=='Cancelled').map((r:any)=>r.parent)),[records]);
  const lines=useMemo(()=>records.filter((r:any)=>['plan','request'].includes(r.kind)&&inPeriod(r.window,per)&&MOVABLE.includes(r.stage)&&r.closure?.state!=='Closed'&&(!r.gmApproval||r.gmApproval.state==='Approved')).sort((a:any,b:any)=>String(a.window).localeCompare(String(b.window))),[records,per.from,per.to]);
  const projects=[...new Set<string>(lines.map((r:any)=>r.project))].sort();
- const [chosenProject,setChosenProject]=useState(''),[selected,setSelected]=useState<string[]>([]),[to,setTo]=useState(''),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+ const [chosenProject,setChosenProject]=useState(''),[activity,setActivity]=useState(''),[selected,setSelected]=useState<string[]>([]),[to,setTo]=useState(''),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
  const p=project!=='all'?project:chosenProject;
- const rows=lines.filter((r:any)=>r.project===p).sort((a:any,b:any)=>String(a.activity).localeCompare(String(b.activity),undefined,{numeric:true})||String(a.item).localeCompare(String(b.item)));
+ const actKey=(r:any)=>r.milestone+'|'+r.activity;
+ const projectRows=lines.filter((r:any)=>r.project===p);
+ const activities=[...new Map(projectRows.map((r:any)=>[actKey(r),r])).values()].sort((a:any,b:any)=>Number(a.activity)-Number(b.activity));
+ const rows=projectRows.filter((r:any)=>!activity||actKey(r)===activity).sort((a:any,b:any)=>String(a.activity).localeCompare(String(b.activity),undefined,{numeric:true})||String(a.item).localeCompare(String(b.item)));
  const movable=rows.filter((r:any)=>!ordered.has(r.id)),blocked=rows.filter((r:any)=>ordered.has(r.id));
  // Default selection: the earliest week's movable lines for the project; default target: the week after them.
  const firstWeek=movable[0]?.window||'';
  useEffect(()=>{setMessage('');setError('');},[per.from,per.to]);
- useEffect(()=>{setSelected(movable.filter((r:any)=>r.window===firstWeek).map((r:any)=>r.id));},[p,firstWeek,records]);
+ // Choosing an activity selects all of its lines; otherwise the earliest week's lines.
+ useEffect(()=>{setActivity('');},[p]);
+ useEffect(()=>{setSelected(movable.filter((r:any)=>activity||r.window===firstWeek).map((r:any)=>r.id));},[p,activity,firstWeek,records]);
  const latest=movable.filter((r:any)=>selected.includes(r.id)).reduce((m:string,r:any)=>r.window>m?r.window:m,'');
  useEffect(()=>{if(latest&&(!to||to<=latest))setTo(addDays(latest,7));},[latest]);
  if(!projects.length)return null;
@@ -37,9 +42,10 @@ export default function CarryForward({records,project,window,period,refresh,inli
  return <Wrap className={inline?'carry-forward carry-inline':'panel carry-forward'}>
   {!inline&&<summary><b>Work slipped? Move lines to a later week</b><span className="muted"> · no new approval needed</span></summary>}
   <form onSubmit={move} className="carry-body">
-   <p className="muted">If the site work for this week does not happen (for example, concreting is postponed), move that project's lines to the next purchase plan. BOQ release, vendor rates and audit approval stay as they are, and the move is recorded in the history.</p>
+   <p className="muted">If the site work for this week does not happen (for example, concreting is postponed), move that project's lines — or just one activity's lines — to a later purchase plan. BOQ release, vendor rates and audit approval stay as they are, and the move is recorded in the history.</p>
    <div className="formgrid">
     {project==='all'&&<label className="field"><span>Project *</span><select className="carry-select" required value={chosenProject} onChange={e=>setChosenProject(e.target.value)}><option value="">Choose project</option>{projects.map(x=><option key={x} value={x}>{x}</option>)}</select></label>}
+    {p&&activities.length>0&&<label className="field"><span>Activity</span><select className="carry-select" value={activity} onChange={e=>setActivity(e.target.value)}><option value="">All activities</option>{activities.map((r:any)=><option key={actKey(r)} value={actKey(r)}>M{r.milestone} · {r.activity} {r.activityName}</option>)}</select></label>}
     <label className="field"><span>Move to week starting Thursday *</span><WeekInput value={to} onChange={setTo} required/></label>
     <label className="field full"><span>Reason *</span><input required minLength={3} maxLength={2000} value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Concreting postponed, shuttering not ready"/></label>
    </div>

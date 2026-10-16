@@ -1,7 +1,7 @@
 import {cents} from './calculations';
 import {recordWindow} from './weekly';
 export function forecastRequests(records:any[],window:string,project='all'){
- return records.filter(r=>['plan','request'].includes(r.kind)&&r.stage!=='Rejected'&&r.closure?.state!=='Closed'&&recordWindow(r,records)===window&&(project==='all'||r.project===project)).map(r=>{
+ return records.filter(r=>['plan','request'].includes(r.kind)&&!['Rejected','Cancelled'].includes(r.stage)&&r.closure?.state!=='Closed'&&recordWindow(r,records)===window&&(project==='all'||r.project===project)).map(r=>{
   const purchases=records.filter(p=>p.kind==='purchase'&&p.parent===r.id&&p.status!=='Cancelled');
   const unscheduled=purchases.map(p=>({...p,remaining:p.total-records.filter(s=>s.kind==='payment'&&s.parent===p.id).reduce((n,s)=>n+s.total,0)})).filter(p=>p.remaining>0);
   const quantity=Number(r.boqQty||r.qty||r.demandQty||0);

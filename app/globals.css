@@ -370,3 +370,10 @@ button.danger{color:#a1312a}
 .rate-steps{margin:4px 0 14px;padding-left:20px;display:flex;flex-direction:column;gap:10px;font-size:14px}.rate-steps .textbutton{display:inline}
 .dark .rate-kind{background:#304551;color:#d2e3ec}.dark .rate-kind.range{background:#4a3e21;color:#f6d895}.dark .rate-kind.project{background:#1d4939;color:#a5e5bf}.dark .rate-line input{border-color:var(--border)}
 @media(max-width:700px){.rate-intro{flex-direction:column}.rate-choices,.rate-choices.two{grid-template-columns:1fr}.rate-line{grid-template-columns:1fr 1fr;padding-bottom:8px;border-bottom:1px solid var(--border)}.rate-line input[aria-label=Item]{grid-column:1/-1}.rate-line.head{display:none}.rate-card>summary small{margin-left:0;flex-basis:100%}}
+/* Purchase updates (16 Oct): ad hoc cycle, cancel line, BOQ download, forecast split */
+.cycle-picks{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}.cycle-picks button{padding:6px 10px;font-size:12px;min-height:0}.cycle-picks button.chosen{border-color:#008575;color:#00756a;font-weight:600}
+.cancel-request{margin-top:12px}.cancel-request ul{margin:6px 0 10px;padding-left:20px;font-size:14px;line-height:1.7}.cancel-request.done{border-left:4px solid #c2453b}
+.download-pms{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow:auto;margin:6px 0 14px}.download-weeks{margin:0 0 10px}
+.forecast-split{padding:0;overflow:hidden;margin-bottom:18px}.forecast-split .site-table{margin:0}.forecast-split .tablebar .actions{flex-wrap:wrap;justify-content:flex-end}.forecast-split .view-switch{margin:0}
+.forecast-split .variation-row td{background:#fff8ec}.forecast-split .total-row td{border-top:2px solid var(--border);background:#f6f9fb}
+.dark .forecast-split .variation-row td{background:#3a321d}.dark .forecast-split .total-row td{background:#1d2b35}

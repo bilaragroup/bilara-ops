@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import {parseRateCard,RATE_CARD_ITEMS} from '../lib/rate-card.ts';
-import {findProjectRate,purchaseTarget} from '../lib/settings.ts';
+import './ts-resolve.mjs';
+const {parseRateCard,RATE_CARD_ITEMS}=await import('../lib/rate-card.ts');
+const {findProjectRate,purchaseTarget}=await import('../lib/settings.ts');
 
 const headers=['Project Number',...RATE_CARD_ITEMS],values=[headers,['120','1000','410','','85.5']];
 const result=parseRateCard(values,[],5);assert.equal(result.projectCount,1);assert.equal(result.rateCount,3);assert.equal(result.rates[0].project,'120');assert.equal(result.rates[0].unit,'*');
