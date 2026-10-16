@@ -31,3 +31,44 @@ export function parseRateCard(values:any[][],existing:ProjectRate[],discountPerc
  const importedKeys=new Set(rates.map(r=>key(r.project,r.item))),manual=existing.filter(r=>r.source!=='BilaraRateCard'&&!importedKeys.has(key(r.project,r.item)));
  return {rates:[...manual,...rates],rateCount:rates.length,projectCount:populatedRows};
 }
+
+/**
+ * A rate-card spreadsheet as the BOQ Team keeps it: first column "Project Number", then one
+ * column per item with the BOQ rate. One row per project; a row may also cover a range of
+ * projects ("120-150"). Blank cells mean the item is not on that card. Any item column is
+ * accepted (no fixed template). If a project appears twice, its rows are combined and a
+ * warning says so; the later row wins where both rows have a rate.
+ */
+export type SheetCard={scope:'project'|'range';project:string;fromProject?:string;toProject?:string;row:number;lines:{item:string;originalRate:number}[]};
+export function parseRateSheet(values:any[][]){
+ if(!values.length)throw Error('The spreadsheet is empty.');
+ const headers=values[0].map((v:any)=>text(v).replace(/^﻿/,'').replace(/\s+/g,' '));
+ if(!/^project( number| no\.?)?$/i.test(headers[0]||''))throw Error('Put the project number in the first column, with the heading "Project Number".');
+ const items:{index:number;item:string}[]=[];const seenItems=new Set<string>();
+ headers.forEach((h,i)=>{if(i===0||!h)return;const k=h.toLowerCase();if(seenItems.has(k))throw Error(`The item "${h}" has two columns. Keep one.`);seenItems.add(k);items.push({index:i,item:h});});
+ if(!items.length)throw Error('Add one column per item after "Project Number", with the item name as the heading.');
+ const cards=new Map<string,SheetCard>(),warnings:string[]=[];
+ for(let row=1;row<values.length;row++){
+  const cells=values[row]||[];if(!cells.some(v=>text(v)))continue;
+  const raw=text(cells[0]).replace(/\.0+$/,'').replace(/\s+/g,''),m=/^([1-9][0-9]{2})(?:[-–to]+([1-9][0-9]{2}))?$/i.exec(raw);
+  if(!m)throw Error(`Row ${row+1}: "${text(cells[0])}" is not a project number (100–999) or a range such as 120-150.`);
+  const range=!!m[2]&&m[2]!==m[1];
+  if(range&&Number(m[1])>Number(m[2]))throw Error(`Row ${row+1}: write the range from the smaller project number, e.g. ${m[2]}-${m[1]}.`);
+  const key=range?`range:${m[1]}-${m[2]}`:`project:${m[1]}`;
+  const lines:{item:string;originalRate:number}[]=[];
+  for(const {index,item} of items){const v=cells[index];if(!text(v))continue;const rate=number(v);if(!Number.isFinite(rate)||rate<=0||rate>1e9)throw Error(`Row ${row+1}: ${item} needs a positive rate (found "${text(v)}").`);lines.push({item,originalRate:rate});}
+  const old=cards.get(key);
+  if(old){
+   const conflicts=lines.filter(l=>old.lines.some(o=>o.item===l.item&&o.originalRate!==l.originalRate)).map(l=>l.item);
+   warnings.push(`${range?'Projects '+m[1]+'–'+m[2]:'Project '+m[1]} is on rows ${old.row+1} and ${row+1}; they were combined${conflicts.length?` and row ${row+1} was used for ${conflicts.join(', ')}`:''}.`);
+   for(const l of lines){const i=old.lines.findIndex(o=>o.item===l.item);if(i>=0)old.lines[i]=l;else old.lines.push(l);}
+   continue;
+  }
+  cards.set(key,range?{scope:'range',project:'',fromProject:m[1],toProject:m[2],row,lines}:{scope:'project',project:m[1],row,lines});
+ }
+ const list=[...cards.values()].filter(c=>c.lines.length);
+ const empty=[...cards.values()].filter(c=>!c.lines.length);
+ if(empty.length)warnings.push(`No rates on the row for ${empty.map(c=>c.scope==='range'?c.fromProject+'–'+c.toProject:c.project).join(', ')}; ${empty.length===1?'it was':'they were'} skipped.`);
+ if(!list.length)throw Error('No rates were found. Fill at least one rate, then upload again.');
+ return {cards:list,warnings,rateCount:list.reduce((n,c)=>n+c.lines.length,0)};
+}

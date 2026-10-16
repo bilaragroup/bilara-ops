@@ -63,6 +63,16 @@ try{
  const all=r.data.values.projectRates;assert.ok(all.some(x=>x.project==='130'&&x.item==='MSand'&&x.originalRate===62));assert.ok(all.some(x=>x.scope==='range'));
  pass('the BilaraRateCard sheet still imports as one card per project, leaving default and range cards');
 
+ const sheet=[['Project Number','Cement','MSand','12 mm Steel'],['130','370','75','78'],['160-180','380','','95'],['130','','76',''],['999','','','']];
+ r=await card({action:'uploadSheet',file:'rate_card.xlsx',values:sheet});assert.equal(r.status,200,JSON.stringify(r));
+ assert.match(r.data.summary,/rate_card.xlsx: 1 new and 1 updated rate cards, 5 rates/);
+ let up=r.data.values.projectRates;const p130=up.filter(x=>x.project==='130'&&!x.scope);
+ assert.deepEqual(p130.map(x=>[x.item,x.originalRate]).sort(),[['12 mm Steel',78],['Cement',370],['MSand',76]]);
+ assert.ok(up.some(x=>x.scope==='range'&&x.fromProject==='160'&&x.item==='12 mm Steel'&&x.originalRate===95));assert.ok(up.some(x=>x.project==='200'));
+ r=await card({action:'uploadSheet',file:'x.xlsx',values:[['Item','Rate'],['Cement','1']]});assert.equal(r.status,400);assert.match(r.data.error,/Project Number/);
+ r=await card({action:'uploadSheet',file:'x.xlsx',values:[['Project Number','Cement'],['12','1']]});assert.equal(r.status,400);assert.match(r.data.error,/Row 2/);
+ pass('the rate-card spreadsheet (any item columns, ranges like 160-180) replaces each listed card; repeated rows combine; other cards stay');
+
  const cardKey='project:130';const line=all.find(x=>x.project==='130'&&x.item==='Cement');
  r=await card({action:'removeLine',cardKey,lineId:line.id});assert.equal(r.status,200);
  r=await card({action:'removeCard',cardKey:'range:120-150'});assert.match(r.data.summary,/Projects 120–150: removed/);

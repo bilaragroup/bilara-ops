@@ -5,7 +5,7 @@ import {protect} from '@/lib/access';
 import type {Actor} from '@/lib/permissions';
 import {database} from '@/lib/database';
 import {defaultSettings, validateSettings, rateCardKey, rateCardLabel, type ProjectRate} from '@/lib/settings';
-import {parseRateCard} from '@/lib/rate-card';
+import {parseRateCard, parseRateSheet} from '@/lib/rate-card';
 
 const fail = (error: string, status = 400) => Response.json({error}, {status});
 const clean = (v: any) => String(v ?? '').trim();
@@ -60,6 +60,28 @@ async function handlePOST(req: Request, a: Actor) {
       if (!card.length) return fail('That rate card was already removed. Reload the rate cards.');
       rates = rates.filter((r) => rateCardKey(r) !== b.cardKey);
       summary = `${rateCardLabel(card[0])}: removed (${card.length} items)`;
+    } else if (b.action === 'uploadSheet') {
+      // The rate-card spreadsheet: one row per project (or range); each row replaces that card.
+      if (!Array.isArray(b.values) || b.values.length > 1500) return fail('The spreadsheet could not be read.');
+      const sheet = parseRateSheet(b.values);
+      const file = clean(b.file).slice(0, 120), keys = new Set<string>();
+      let added = 0, changed = 0;
+      const next: ProjectRate[] = [];
+      for (const c of sheet.cards) {
+        const scope: Partial<ProjectRate> = c.scope === 'range' ? {scope: 'range', project: '', fromProject: c.fromProject, toProject: c.toProject} : {project: c.project};
+        const key = rateCardKey(scope);
+        keys.add(key);
+        const old = rates.filter((r) => rateCardKey(r) === key);
+        old.length ? changed++ : added++;
+        for (const l of c.lines) {
+          const same = old.find((r) => lineKey(r) === lineKey({item: l.item, unit: '*'}));
+          next.push(same && same.originalRate === l.originalRate ? same : {...scope, id: same?.id || crypto.randomUUID(), item: l.item, unit: '*', originalRate: l.originalRate,
+            discountPercent: same?.discountPercent ?? 5, active: true, source: 'Excel: ' + file, ...stamp} as ProjectRate);
+        }
+      }
+      rates = [...rates.filter((r) => !keys.has(rateCardKey(r))), ...next];
+      values.rateCardImportedAt = now; values.rateCardImportedFile = file;
+      summary = `${file || 'Spreadsheet'}: ${added} new and ${changed} updated rate cards, ${sheet.rateCount} rates`;
     } else if (b.action === 'importSheet') {
       // The BilaraRateCard Google sheet (Project Number + one column per item) → one card per project.
       if (!Array.isArray(b.values) || b.values.length > 1000) return fail('The rate-card sheet could not be read.');

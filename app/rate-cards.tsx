@@ -1,19 +1,18 @@
 'use client';
 // Rate cards: the BOQ rates the app uses to set the purchasing target (BOQ rate less the reduction).
-// Three kinds, most specific wins: one project → a range of projects (e.g. 120–150) → default.
-// BOQ Team and Super Admin add or change them, by typing or from an Excel sheet; GM and Audit read.
-import { useMemo, useState } from 'react';
+// Kept by uploading the rate-card spreadsheet: one row per project (or range such as 120-150),
+// one column per item. A project's own card wins over a range card. BOQ Team and Super Admin
+// upload; GM and Audit read.
+import { useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { rateCardKey, rateCardLabel, scopeOf, rateAppliesTo, purchaseTarget } from '@/lib/settings';
-import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
+import { parseRateSheet } from '@/lib/rate-card';
 
 type Any = any;
 const inr = (n: any) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
-const TEMPLATE_HEADERS = ['Item', 'Unit', 'BOQ rate', 'Reduction %'];
 const unitText = (u: string) => (u === '*' || !u ? 'Any unit' : u);
 const order = (k: string) => (k === 'default' ? 0 : k.startsWith('range:') ? 1 : 2);
 const cardSort = (a: Any, b: Any) => order(a.key) - order(b.key) || Number(a.first.fromProject || a.first.project) - Number(b.first.fromProject || b.first.project);
-const blankLine = () => ({ item: '', unit: '', originalRate: '', discountPercent: '5' });
 
 async function readSheet(file: File): Promise<any[][]> {
   if (file.size > 5 * 1024 * 1024) throw Error('Use an Excel file under 5 MB.');
@@ -24,46 +23,29 @@ async function readSheet(file: File): Promise<any[][]> {
   if (!sheet) throw Error('The workbook has no sheet.');
   const rows: any[][] = [];
   sheet.eachRow({ includeEmpty: false }, (row: any) => {
-    rows.push(Array.from({ length: Math.max(17, row.cellCount) }, (_, i) => {
-      const c = row.getCell(i + 1);
-      return typeof c.value === 'object' && c.value && 'result' in c.value ? c.value.result : c.text;
-    }));
+    const cells = Array.from({ length: row.cellCount }, (_, i) => {
+      const c = row.getCell(i + 1), v = typeof c.value === 'object' && c.value && 'result' in c.value ? c.value.result : c.text;
+      return v === null || v === undefined ? '' : String(v).trim();
+    });
+    while (cells.length && cells[cells.length - 1] === '') cells.pop();
+    rows.push(cells);
   });
   return rows;
 }
-async function downloadTemplate(name: string, lines: Any[]) {
+/** Today's project and range cards in the same layout as the upload: one row each, one column per item. */
+async function downloadCards(cards: Any[]) {
   const ExcelJS: any = await import('exceljs');
-  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Rates');
-  sheet.addRow(TEMPLATE_HEADERS).font = { bold: true };
-  (lines.length ? lines : RATE_CARD_ITEMS.map((item) => ({ item, unit: RATE_CARD_ITEM_DEFAULTS[item]?.unit || '', originalRate: '', discountPercent: 5 })))
-    .forEach((l: Any) => sheet.addRow([l.item, l.unit === '*' ? '' : l.unit, l.originalRate === '' ? null : Number(l.originalRate), Number(l.discountPercent ?? 5)]));
-  sheet.columns = [{ width: 34 }, { width: 10 }, { width: 12 }, { width: 13 }];
-  sheet.addRow([]);
-  sheet.addRow(['Leave Unit blank for any unit. Reduction % is how far below the BOQ rate Purchase must buy (5 if blank).']).font = { italic: true, color: { argb: 'FF667788' } };
+  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('RateCard');
+  const list = cards.filter((c) => c.key !== 'default');
+  const items = [...new Set(list.flatMap((c) => c.lines.map((l: Any) => l.item)))];
+  sheet.addRow(['Project Number', ...items]).font = { bold: true };
+  list.forEach((c) => sheet.addRow([c.first.fromProject ? `${c.first.fromProject}-${c.first.toProject}` : Number(c.first.project),
+    ...items.map((i) => c.lines.find((l: Any) => l.item === i)?.originalRate ?? null)]));
+  sheet.columns.forEach((col: Any, i: number) => { col.width = i ? 14 : 16; });
   const blob = new Blob([await book.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = name.replace(/[^\w –-]+/g, '') + '.xlsx'; a.click();
+  a.href = URL.createObjectURL(blob); a.download = 'Rate cards.xlsx'; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-/** Rows of the simple template (Item, Unit, BOQ rate, Reduction %) as rate lines. */
-function linesFromSheet(rows: any[][]) {
-  const head = (rows[0] || []).map((h) => String(h ?? '').trim().toLowerCase());
-  const col = (names: string[]) => head.findIndex((h) => names.includes(h));
-  const ci = col(['item']), cu = col(['unit']), cr = col(['boq rate', 'rate']), cd = col(['reduction %', 'reduction', 'target reduction %']);
-  if (ci < 0 || cr < 0) throw Error('Use the template headings: Item, Unit, BOQ rate, Reduction %.');
-  const lines: Any[] = [];
-  rows.slice(1).forEach((r, n) => {
-    const item = String(r[ci] ?? '').trim(), raw = String(r[cr] ?? '').replace(/[₹,\s]/g, '');
-    if (!item || item.startsWith('Leave Unit blank')) return;
-    if (!raw) return; // a template row without a rate is skipped
-    const rate = Number(raw);
-    if (!Number.isFinite(rate) || rate <= 0) throw Error(`Row ${n + 2}: ${item} needs a positive BOQ rate.`);
-    const d = cd >= 0 && String(r[cd] ?? '').trim() !== '' ? Number(String(r[cd]).replace('%', '')) : 5;
-    if (!Number.isFinite(d) || d < 0 || d > 50) throw Error(`Row ${n + 2}: reduction must be 0–50%.`);
-    lines.push({ item, unit: cu >= 0 ? String(r[cu] ?? '').trim() : '', originalRate: rate, discountPercent: d });
-  });
-  if (!lines.length) throw Error('No rates were found in the sheet. Fill the BOQ rate column, then upload again.');
-  return lines;
 }
 
 export default function RateCards({ settings, onSaved, canEdit, projects = [] }: Any) {
@@ -73,7 +55,7 @@ export default function RateCards({ settings, onSaved, canEdit, projects = [] }:
     rates.forEach((r) => { const k = rateCardKey(r); if (!m.has(k)) m.set(k, { key: k, first: r, lines: [] }); m.get(k).lines.push(r); });
     return [...m.values()].sort(cardSort);
   }, [rates]);
-  const [find, setFind] = useState(''), [check, setCheck] = useState(''), [open, setOpen] = useState<Any>(null);
+  const [find, setFind] = useState(''), [check, setCheck] = useState(''), [open, setOpen] = useState(false);
   const [message, setMessage] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState('');
   const nameOf = (p: string) => projects.find((x: Any) => String(x.project) === String(p))?.name || '';
 
@@ -105,9 +87,12 @@ export default function RateCards({ settings, onSaved, canEdit, projects = [] }:
     <section className="rate-page">
       <div className="panel rate-intro">
         <div>
-          <p className="muted">The BOQ rate per item. The purchasing target is the BOQ rate less the reduction (5% unless set). When a project has more than one card, the most specific is used: <b>its own card</b>, then <b>its range</b>, then the <b>default card</b>. BOQ rates stay hidden from Purchase.</p>
+          <p className="muted">The BOQ rate per item for each project. The purchasing target is the BOQ rate less the reduction (5% unless set). Upload the spreadsheet again whenever rates change: each row replaces that project's card. A row for a range (e.g. 120-150) covers projects without their own row. BOQ rates stay hidden from Purchase.</p>
         </div>
-        {canEdit && <button className="primary" onClick={() => setOpen({})}>+ Add rate card</button>}
+        <div className="actions">
+          {cards.length > 0 && <button className="secondary" onClick={() => downloadCards(cards)}>Download rate cards</button>}
+          {canEdit && <button className="primary" onClick={() => setOpen(true)}>Upload rate cards</button>}
+        </div>
       </div>
       {message && <p className="alert green" role="status">{message}</p>}
       {error && <p className="alert red" role="alert">{error}</p>}
@@ -122,12 +107,11 @@ export default function RateCards({ settings, onSaved, canEdit, projects = [] }:
       </div>
 
       {cards.length > 3 && <label className="field rate-find"><span>Find a rate card</span><input placeholder="Project number or item" value={find} onChange={(e) => setFind(e.target.value)} /></label>}
-      {!cards.length && <div className="panel empty"><h3>No rate cards yet</h3><p>{canEdit ? 'Start with the default rate card, which every project uses until it gets its own.' : 'The BOQ Team has not added rate cards yet.'}</p>{canEdit && <button className="primary" onClick={() => setOpen({ scope: { type: 'default' } })}>Add the default rate card</button>}</div>}
+      {!cards.length && <div className="panel empty"><h3>No rate cards yet</h3><p>{canEdit ? 'Upload your rate-card spreadsheet: Project Number in the first column, then one column per item with its BOQ rate.' : 'The BOQ Team has not uploaded rate cards yet.'}</p>{canEdit && <button className="primary" onClick={() => setOpen(true)}>Upload rate cards</button>}</div>}
       {shown.map((c) => {
         const last = c.lines.map((l: Any) => l.updatedAt || '').sort().pop();
         const by = c.lines.find((l: Any) => l.updatedAt === last)?.updatedBy;
         const scope = scopeOf(c.first);
-        const scopeArg = scope === 'default' ? { type: 'default' } : scope === 'range' ? { type: 'range', from: c.first.fromProject, to: c.first.toProject } : { type: 'project', project: c.first.project };
         return (
           <details key={c.key} className="panel rate-card" open={cards.length <= 3}>
             <summary>
@@ -144,150 +128,65 @@ export default function RateCards({ settings, onSaved, canEdit, projects = [] }:
               </tr>)}</tbody>
             </table></div>
             <div className="site-actions">
-              {canEdit && <button className="secondary" onClick={() => setOpen({ scope: scopeArg, how: 'manual' })}>Add or change items</button>}
-              {canEdit && <button className="secondary" onClick={() => setOpen({ scope: scopeArg, how: 'excel' })}>Update from Excel</button>}
-              <button className="textbutton" onClick={() => downloadTemplate(rateCardLabel(c.first), c.lines)}>Download as Excel</button>
               {canEdit && <button className="textbutton neg" disabled={!!busy} onClick={() => remove({ action: 'removeCard', cardKey: c.key }, `Remove the whole ${rateCardLabel(c.first)} (${c.lines.length} items)? Projects then use the next card that covers them.`)}>Remove card</button>}
             </div>
           </details>
         );
       })}
-      {open && <AddRateCard start={open} cards={cards} projects={projects} onClose={() => setOpen(null)} post={post}
-        onDone={(summary: string) => { setOpen(null); setError(''); setMessage(summary + '.'); }} />}
+      {open && <UploadSheet cards={cards} onClose={() => setOpen(false)} post={post}
+        onDone={(summary: string) => { setOpen(false); setError(''); setMessage(summary + '.'); }} />}
     </section>
   );
 }
 
-// ---------- the "Add rate card" window: how → which projects → rates ----------
+// ---------- "Upload rate cards": choose the spreadsheet → check → save ----------
 
-function AddRateCard({ start, cards, projects, onClose, onDone, post }: Any) {
-  const [how, setHow] = useState<string>(start.how || '');
-  const [scope, setScope] = useState<Any>(start.scope || null);
-  const [type, setType] = useState<string>(start.scope?.type || '');
-  const [project, setProject] = useState(start.scope?.project || ''), [from, setFrom] = useState(start.scope?.from || ''), [to, setTo] = useState(start.scope?.to || '');
-  const initial = (s: Any) => {
-    const k = !s ? '' : s.type === 'default' ? 'default' : s.type === 'range' ? `range:${s.from}-${s.to}` : `project:${s.project}`;
-    const card = cards.find((c: Any) => c.key === k);
-    return card ? card.lines.map((l: Any) => ({ item: l.item, unit: l.unit === '*' ? '' : l.unit, originalRate: String(l.originalRate), discountPercent: String(l.discountPercent) })) : [blankLine()];
-  };
-  const [lines, setLines] = useState<Any[]>(() => initial(start.scope)), [replace, setReplace] = useState(false), [file, setFile] = useState(''), [sheet, setSheet] = useState<Any>(null);
+function UploadSheet({ cards, onClose, onDone, post }: Any) {
+  const [file, setFile] = useState(''), [rows, setRows] = useState<any[][] | null>(null), [parsed, setParsed] = useState<Any>(null);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  const step = !how ? 1 : !scope ? 2 : 3;
-  const key = scope ? (scope.type === 'default' ? 'default' : scope.type === 'range' ? `range:${scope.from}-${scope.to}` : `project:${scope.project}`) : '';
-  const existing = cards.find((c: Any) => c.key === key);
-  const label = scope ? rateCardLabel(scope.type === 'default' ? { scope: 'default' } : scope.type === 'range' ? { scope: 'range', fromProject: scope.from, toProject: scope.to } : { project: scope.project }) : '';
-  const items = [...new Set([...RATE_CARD_ITEMS, ...cards.flatMap((c: Any) => c.lines.map((l: Any) => l.item))])];
-
-  function chooseScope(e: any) {
-    e.preventDefault(); setError('');
-    const ok = (p: string) => /^[1-9]\d{2}$/.test(p.trim());
-    if (type === 'project' && !ok(project)) return setError('Enter a project number from 100 to 999.');
-    if (type === 'range' && (!ok(from) || !ok(to) || Number(from) >= Number(to))) return setError('Enter two project numbers from 100 to 999, the first smaller (e.g. 120 to 150).');
-    if (type === 'range') {
-      const clash = cards.find((c: Any) => c.key.startsWith('range:') && c.key !== `range:${from.trim()}-${to.trim()}` && Number(c.first.fromProject) <= Number(to) && Number(from) <= Number(c.first.toProject));
-      if (clash) return setError(`Projects ${from}–${to} overlap the existing ${rateCardLabel(clash.first)}. Change that card or choose a range that does not share projects.`);
-    }
-    const s = type === 'default' ? { type } : type === 'range' ? { type, from: from.trim(), to: to.trim() } : { type, project: project.trim() };
-    setScope(s);
-    setLines(initial(s));
-  }
+  const input = useRef<HTMLInputElement>(null);
   async function pick(f?: File) {
     if (!f) return;
-    setError(''); setSheet(null);
-    try {
-      const rows = await readSheet(f);
-      setFile(f.name);
-      if (String(rows[0]?.[0] ?? '').trim() === 'Project Number') setSheet({ legacy: true, rows, projects: rows.slice(1).filter((r) => String(r[0] ?? '').trim()).length });
-      else setSheet({ lines: linesFromSheet(rows) });
-    } catch (e) { setError((e as Error).message); }
+    setError(''); setParsed(null); setRows(null); setFile(f.name);
+    try { const values = await readSheet(f); setParsed(parseRateSheet(values)); setRows(values); }
+    catch (e) { setError((e as Error).message); }
   }
   async function save() {
     setBusy(true); setError('');
-    try {
-      let d: Any;
-      if (sheet?.legacy) d = await post({ action: 'importSheet', values: sheet.rows, file });
-      else {
-        const list = how === 'excel' ? sheet?.lines || [] : lines.filter((l) => String(l.item).trim() || String(l.originalRate).trim());
-        if (!list.length) throw Error(how === 'excel' ? 'Choose the filled-in Excel sheet first.' : 'Add at least one item with a BOQ rate.');
-        const bad = list.find((l: Any) => !String(l.item).trim() || !(Number(l.originalRate) > 0));
-        if (bad) throw Error(`${String(bad.item).trim() || 'A line'} needs an item name and a BOQ rate above zero.`);
-        d = await post({ action: 'save', scope, lines: list, replace: how === 'manual' ? true : replace, source: how === 'excel' ? 'Excel: ' + file : 'Manual' });
-      }
-      onDone(d.summary);
-    } catch (e) { setError((e as Error).message); setBusy(false); }
+    try { onDone((await post({ action: 'uploadSheet', values: rows, file })).summary); }
+    catch (e) { setError((e as Error).message); setBusy(false); }
   }
-  const set = (i: number, k: string, v: string) => setLines(lines.map((l, n) => (n === i ? { ...l, [k]: v } : l)));
-  const back = () => { setError(''); if (step === 3 && !start.scope) { setScope(null); setSheet(null); } else if (step === 2 && !start.how) setHow(''); };
-
+  const status = (c: Any) => {
+    const key = c.scope === 'range' ? `range:${c.fromProject}-${c.toProject}` : `project:${c.project}`;
+    const old = cards.find((x: Any) => x.key === key);
+    if (!old) return ['New', 'green'];
+    const same = old.lines.length === c.lines.length && c.lines.every((l: Any) => old.lines.some((o: Any) => o.item === l.item && o.originalRate === l.originalRate));
+    return same ? ['No change', ''] : ['Updated', 'amber'];
+  };
   return (
     <Dialog open onOpenChange={(v) => { if (!v && !busy) onClose(); }}>
       <DialogContent className="wide-dialog rate-dialog">
-        <DialogTitle>{step === 3 ? (existing ? 'Update ' : 'New ') + label.replace('Default rate card (all projects)', 'default rate card') : 'Add rate card'}</DialogTitle>
-        <DialogDescription>{step === 1 ? 'Step 1 of 3 · How do you want to add the rates?' : step === 2 ? 'Step 2 of 3 · Which projects is this rate card for?' : `Step 3 of 3 · ${how === 'excel' ? 'Upload the sheet' : 'Enter the rates'}`}</DialogDescription>
-
-        {step === 1 && <div className="rate-choices two">
-          <button className="rate-choice" onClick={() => setHow('manual')}><b>Type them in</b><small>Enter items and rates here. Best for a few items.</small></button>
-          <button className="rate-choice" onClick={() => setHow('excel')}><b>Upload an Excel sheet</b><small>Download the template, fill the rates, upload it. Best for many items.</small></button>
-        </div>}
-
-        {step === 2 && <form onSubmit={chooseScope}>
-          <div className="rate-choices">
-            {[['default', 'Default rate card', 'Every project, unless it has a range or its own card.'], ['range', 'A range of projects', 'For example projects 120 to 150.'], ['project', 'One project', 'Only this project. It wins over the range and default cards.']].map(([v, t, d]) => (
-              <label key={v} className={'rate-choice' + (type === v ? ' chosen' : '')}><input type="radio" name="rateScope" value={v} checked={type === v} onChange={() => { setType(v); setError(''); }} /><b>{t}</b><small>{d}</small>
-                {v === 'default' && type === v && cards.some((c: Any) => c.key === 'default') && <small className="tag">Exists · you will update it</small>}
-              </label>
-            ))}
-          </div>
-          {type === 'range' && <div className="formgrid rate-range">
-            <label className="field"><span>From project *</span><input inputMode="numeric" maxLength={3} required value={from} onChange={(e) => setFrom(e.target.value)} placeholder="120" /></label>
-            <label className="field"><span>To project *</span><input inputMode="numeric" maxLength={3} required value={to} onChange={(e) => setTo(e.target.value)} placeholder="150" /></label>
-          </div>}
-          {type === 'project' && <label className="field rate-range"><span>Project number *</span>
-            <input list="rate-projects" inputMode="numeric" maxLength={3} required value={project} onChange={(e) => setProject(e.target.value)} placeholder="125" />
-            <datalist id="rate-projects">{projects.map((p: Any) => <option key={p.project} value={p.project}>{p.name}</option>)}</datalist></label>}
-          {error && <p className="alert red" role="alert">{error}</p>}
-          <div className="formfooter">{!start.how && <button type="button" className="secondary" onClick={back}>Back</button>}<button className="primary" disabled={!type}>Next</button></div>
-        </form>}
-
-        {step === 3 && how === 'manual' && <>
-          {existing && <p className="alert">This card already has {existing.lines.length} item{existing.lines.length === 1 ? '' : 's'}; they are listed below. Change a rate, add a line, or clear a line to remove it.</p>}
-          <datalist id="rate-items">{items.map((i) => <option key={i} value={i} />)}</datalist>
-          <div className="rate-lines">
-            <div className="rate-line head"><span>Item</span><span>Unit</span><span>BOQ rate (₹)</span><span>Reduction %</span><span></span></div>
-            {lines.map((l, i) => <div key={i} className="rate-line">
-              <input list="rate-items" aria-label="Item" placeholder="Cement" value={l.item} onChange={(e) => { const v = e.target.value; setLines(lines.map((x, n) => (n === i ? { ...x, item: v, unit: x.unit || (RATE_CARD_ITEM_DEFAULTS as Any)[v]?.unit || '' } : x))); }} />
-              <input aria-label="Unit" placeholder="Any" value={l.unit} onChange={(e) => set(i, 'unit', e.target.value)} />
-              <input aria-label="BOQ rate" type="number" min="0" step="any" value={l.originalRate} onChange={(e) => set(i, 'originalRate', e.target.value)} />
-              <input aria-label="Reduction %" type="number" min="0" max="50" step="any" value={l.discountPercent} onChange={(e) => set(i, 'discountPercent', e.target.value)} />
-              <button type="button" className="textbutton" aria-label="Remove line" onClick={() => setLines(lines.length > 1 ? lines.filter((_, n) => n !== i) : [blankLine()])}>✕</button>
-            </div>)}
-          </div>
-          <div className="site-actions"><button type="button" className="secondary" onClick={() => setLines([...lines, blankLine()])}>+ Add item</button></div>
-          <p className="muted">Leave Unit empty when the rate holds for any unit. Purchase must buy at least the reduction below the BOQ rate.</p>
+        <DialogTitle>Upload rate cards</DialogTitle>
+        <DialogDescription>Your rate-card spreadsheet: <b>Project Number</b> in the first column, then one column per item with its BOQ rate. Each row replaces that project's card. A row can also cover a range of projects, written like <b>120-150</b>.</DialogDescription>
+        <input ref={input} type="file" accept=".xlsx" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} />
+        <div className="rate-pick">
+          <button type="button" className={parsed ? 'secondary' : 'primary'} onClick={() => input.current?.click()}>{file ? 'Choose another file' : 'Choose spreadsheet'}</button>
+          {file && <span className="muted">{file}</span>}
+        </div>
+        {parsed && <>
+          <p className="alert green">{parsed.cards.length} rate card{parsed.cards.length === 1 ? '' : 's'} · {parsed.rateCount} rates read.</p>
+          {parsed.warnings.map((w: string) => <p key={w} className="alert amber">{w}</p>)}
+          <div className="scroll-x rate-preview"><table className="site-table"><thead><tr><th>Row</th><th>Projects</th><th>Items</th><th>Rates</th><th></th></tr></thead>
+            <tbody>{parsed.cards.map((c: Any) => { const [t, tone] = status(c); return (
+              <tr key={c.row}><td>{c.row + 1}</td><td><b>{c.scope === 'range' ? `${c.fromProject}–${c.toProject}` : c.project}</b></td><td>{c.lines.length}</td>
+                <td><small>{c.lines.map((l: Any) => `${l.item} ${inr(l.originalRate)}`).join(' · ')}</small></td><td><span className={'tag ' + tone}>{t}</span></td></tr>
+            ); })}</tbody></table></div>
         </>}
-
-        {step === 3 && how === 'excel' && <>
-          <ol className="rate-steps">
-            <li><button type="button" className="textbutton" onClick={() => downloadTemplate(label, existing ? existing.lines : [])}>Download the template</button>{existing ? ' — it has this card\'s current rates.' : ' — the common items are listed; fill the BOQ rates.'}</li>
-            <li>Fill the <b>BOQ rate</b> column (and Reduction % if not 5).</li>
-            <li><label className="secondary file-button">Choose the filled sheet<input type="file" accept=".xlsx" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} /></label>{file && <small className="muted"> {file}</small>}</li>
-          </ol>
-          {sheet?.legacy && <p className="alert amber">This is the BilaraRateCard sheet (a column per item). It sets a card for each of its {sheet.projects} projects and leaves the default and range cards as they are.</p>}
-          {sheet?.lines && <>
-            <p className="alert green">{sheet.lines.length} rates read. {existing ? (() => { const keyOf = (l: Any) => l.item.trim().toLowerCase() + '|' + (l.unit || '*').toLowerCase(); const have = new Set(existing.lines.map((l: Any) => keyOf({ ...l, unit: l.unit === '*' ? '' : l.unit }))); const added = sheet.lines.filter((l: Any) => !have.has(keyOf(l))).length; return `${sheet.lines.length - added} update existing items, ${added} are new.`; })() : ''}</p>
-            <div className="scroll-x"><table className="site-table"><thead><tr><th>Item</th><th>Unit</th><th>BOQ rate</th><th>Reduction</th></tr></thead>
-              <tbody>{sheet.lines.slice(0, 50).map((l: Any, i: number) => <tr key={i}><td>{l.item}</td><td>{unitText(l.unit)}</td><td>{inr(l.originalRate)}</td><td>{l.discountPercent}%</td></tr>)}</tbody></table></div>
-            {existing && <label className="site-check"><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} /> Also remove items that are not in this sheet</label>}
-          </>}
-        </>}
-
-        {step === 3 && <>
-          {error && <p className="alert red" role="alert">{error}</p>}
-          <div className="formfooter">
-            {!start.scope && <button type="button" className="secondary" onClick={back} disabled={busy}>Back</button>}
-            <button className="primary" onClick={save} disabled={busy || (how === 'excel' && !sheet)}>{busy ? 'Saving…' : existing && !sheet?.legacy ? 'Save changes' : 'Save rate card'}</button>
-          </div>
-        </>}
+        {error && <p className="alert red" role="alert">{error}</p>}
+        <div className="formfooter">
+          <button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="primary" onClick={save} disabled={busy || !parsed}>{busy ? 'Saving…' : parsed ? `Save ${parsed.cards.length} rate card${parsed.cards.length === 1 ? '' : 's'}` : 'Save'}</button>
+        </div>
       </DialogContent>
     </Dialog>
   );
