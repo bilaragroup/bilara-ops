@@ -61,7 +61,7 @@ export default function RateCards({ settings, onSaved, canEdit, projects = [] }:
     rates.forEach((r) => { const k = rateCardKey(r); if (!m.has(k)) m.set(k, { key: k, first: r, lines: [] }); m.get(k).lines.push(r); });
     return [...m.values()].sort(cardSort);
   }, [rates]);
-  const [find, setFind] = useState(''), [check, setCheck] = useState(''), [open, setOpen] = useState<Any>(null);
+  const [find, setFind] = useState(''), [open, setOpen] = useState<Any>(null);
   const [message, setMessage] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState('');
   const nameOf = (p: string) => projects.find((x: Any) => String(x.project) === String(p))?.name || '';
 
@@ -80,14 +80,6 @@ export default function RateCards({ settings, onSaved, canEdit, projects = [] }:
   const q = find.trim();
   const shown = cards.filter((c) => !q || (/^\d{3}$/.test(q) ? rateAppliesTo(c.first, q)
     : rateCardLabel(c.first).toLowerCase().includes(q.toLowerCase()) || c.lines.some((l: Any) => l.item.toLowerCase().includes(q.toLowerCase()))));
-  // For one project: each item and unit with the rate of the most specific card that covers it.
-  const p = check.trim(), rank: Any = { project: 0, range: 1, default: 2 };
-  const checkRates: Any[] = /^[1-9]\d{2}$/.test(p)
-    ? [...rates.filter((r) => r.active !== false && rateAppliesTo(r, p))
-        .sort((a, b) => rank[scopeOf(a)] - rank[scopeOf(b)])
-        .reduce((m, r) => { const k = r.item.trim().toLowerCase() + '|' + String(r.unit).toLowerCase(); if (!m.has(k)) m.set(k, r); return m; }, new Map<string, Any>()).values()]
-        .sort((a, b) => a.item.localeCompare(b.item))
-    : [];
 
   return (
     <section className="rate-page">
@@ -102,15 +94,6 @@ export default function RateCards({ settings, onSaved, canEdit, projects = [] }:
       </div>
       {message && <p className="alert green" role="status">{message}</p>}
       {error && <p className="alert red" role="alert">{error}</p>}
-
-      <div className="panel rate-check">
-        <label className="field"><span>Which rates apply to a project?</span><input inputMode="numeric" maxLength={3} placeholder="Project number, e.g. 125" value={check} onChange={(e) => setCheck(e.target.value)} /></label>
-        {check.trim() && !/^[1-9]\d{2}$/.test(check.trim()) && <p className="muted">Enter a project number from 100 to 999.</p>}
-        {/^[1-9]\d{2}$/.test(check.trim()) && (checkRates.length
-          ? <table className="site-table"><thead><tr><th>Item</th><th>Unit</th><th>BOQ rate</th><th>Purchase target</th><th>From</th></tr></thead>
-            <tbody>{checkRates.map((rate: Any) => <tr key={rate.id}><td>{rate.item}</td><td>{unitText(rate.unit)}</td><td>{inr(rate.originalRate)}</td><td>{inr(purchaseTarget(rate))}</td><td><span className={'tag ' + (scopeOf(rate) === 'project' ? 'green' : scopeOf(rate) === 'range' ? 'amber' : '')}>{rateCardLabel(rate)}</span></td></tr>)}</tbody></table>
-          : <p className="muted">No rate card covers project {check.trim()} yet.</p>)}
-      </div>
 
       {cards.length > 3 && <label className="field rate-find"><span>Find a rate card</span><input placeholder="Project number or item" value={find} onChange={(e) => setFind(e.target.value)} /></label>}
       {!cards.length && <div className="panel empty"><h3>No rate cards yet</h3><p>{canEdit ? 'Start with the default rate card: every project uses it until it gets a range or its own card.' : 'The BOQ Team has not added rate cards yet.'}</p>{canEdit && <button className="primary" onClick={() => setOpen({})}>+ Add rate card</button>}</div>}

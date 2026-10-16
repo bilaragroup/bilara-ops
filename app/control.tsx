@@ -365,7 +365,8 @@ export default function Control({ user, testUserSwitch }: any) {
     canPurchase = has(user, 'Purchase Manager', 'Purchase Team'),
     canPay = has(user, 'Accounts'),
     canPrivate = confidential(user),
-    canSeeRates = canPrivate || canPurchase;
+    canSeeRates = canPrivate || canPurchase,
+    boqOnly = user.roles.includes('BOQ Team') && !has(user, 'GM', 'Audit', 'Purchase Manager', 'Purchase Team', 'Accounts', 'Project Manager');
   const [referenceRates, setReferenceRates] = useState<any[]>([]);
   const canStart = (k: string, extra: any = {}) =>
     k === 'settle'
@@ -404,6 +405,7 @@ export default function Control({ user, testUserSwitch }: any) {
     [reqView, setReqView] = useState<'materials' | 'pe'>('materials'),
     // Requests list: show active (default), closed, or all.
     [statusFilter, setStatusFilter] = useState<'active' | 'closed' | 'all'>('active'),
+    [sortBy, setSortBy] = useState<'recent' | 'due' | 'week'>('recent'),
     [offset, setOffset] = useState(0),
     [loading, setLoading] = useState(true),
     [sourceLoading, setSourceLoading] = useState(false),
@@ -563,17 +565,38 @@ export default function Control({ user, testUserSwitch }: any) {
   )
     .filter(matches)
     .sort((a, b) =>
-      multiWeek && tab !== 'payment'
-        ? String(recordWindow(a, records)).localeCompare(
-            String(recordWindow(b, records)),
-          )
-        : 0,
+      statusTab && sortBy === 'recent'
+        ? String(b.updated || '').localeCompare(String(a.updated || ''))
+        : statusTab && sortBy === 'due'
+          ? String(a.due || '').localeCompare(String(b.due || ''))
+          : multiWeek && tab !== 'payment'
+            ? String(recordWindow(a, records)).localeCompare(
+                String(recordWindow(b, records)),
+              )
+            : 0,
     );
   const statusCounts = {
     active: unfiltered.filter((r) => !isClosed(r)).length,
     closed: unfiltered.filter(isClosed).length,
     all: unfiltered.length,
   };
+  // Requests waiting for this person's action (sidebar counters). Red when any of them is
+  // Urgent or Critical, or its need-by date has passed.
+  const waitingFor = (r: any) =>
+    !isClosed(r) &&
+    ((r.gmApproval?.state === 'Pending' && has(user, 'GM')) ||
+      (r.stage === 'Submitted' && r.gmApproval?.state !== 'Pending' && has(user, 'BOQ Team')) ||
+      (r.stage === 'BOQ priced' && has(user, 'Purchase Manager', 'Purchase Team')) ||
+      (r.stage === 'Vendors finalized' && has(user, 'Audit')) ||
+      (r.stage === 'Audit approved' &&
+        !buys.some((p) => p.parent === r.id && p.status !== 'Cancelled') &&
+        has(user, 'Purchase Manager', 'Purchase Team')));
+  const waiting = Object.fromEntries(
+    (['plan', 'request'] as const).map((k) => {
+      const list = (k === 'plan' ? plans : requests).filter(waitingFor);
+      return [k, { count: list.length, urgent: list.filter((r) => ['Urgent', 'Critical'].includes(r.priority) || (!!r.due && r.due < today())).length }];
+    }),
+  ) as Record<string, { count: number; urgent: number }>;
   // Plumbing & electrical requests waiting for this person (badge on the switch).
   const peWaiting = records.filter(
     (r) =>
@@ -985,6 +1008,16 @@ export default function Control({ user, testUserSwitch }: any) {
               </div>
             )}
           </div>
+          {statusTab && (
+            <label className="field sort-field">
+              <span>Sort</span>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} aria-label="Sort requests">
+                <option value="recent">Most recent first</option>
+                <option value="due">Need-by date</option>
+                <option value="week">Execution week</option>
+              </select>
+            </label>
+          )}
           <button
             className="secondary"
             onClick={() => exportCSV(active, tab + '-register')}
@@ -1265,7 +1298,9 @@ export default function Control({ user, testUserSwitch }: any) {
                 ([v]) =>
                   (!['projects', 'users', 'settings'].includes(String(v)) ||
                     has(user)) &&
-                  (v !== 'purchase-plan' || canPurchase || canPrivate) &&
+                  // BOQ prices requests on Purchase requests; vendor rates and payments are for Purchase, Audit, GM and Accounts.
+                  (v !== 'purchase-plan' || canPurchase || has(user, 'GM', 'Audit')) &&
+                  (v !== 'payment' || !boqOnly) &&
                   (v !== 'audit' || has(user, 'Audit', 'GM')) &&
                   (v !== 'rate-cards' || has(user, 'BOQ Team', 'GM', 'Audit')) &&
                   (v !== 'grn' ||
@@ -1277,6 +1312,14 @@ export default function Control({ user, testUserSwitch }: any) {
                 <TabsTrigger key={v} value={v}>
                   <Icon size={16} />
                   {label}
+                  {(v === 'plan' || v === 'request') && waiting[v].count > 0 && (
+                    <span
+                      className={'nav-count' + (waiting[v].urgent ? ' red' : '')}
+                      title={`${waiting[v].count} waiting for you${waiting[v].urgent ? ` · ${waiting[v].urgent} urgent or critical` : ''}`}
+                    >
+                      {waiting[v].count}
+                    </span>
+                  )}
                 </TabsTrigger>
               ))}
           </TabsList>
@@ -1315,7 +1358,7 @@ export default function Control({ user, testUserSwitch }: any) {
             </h1>
             <ThemeToggle />
             <div className="header-buttons">
-            {tab === 'plan' && reqView === 'materials' && !canPurchase && has(user, 'Project Manager', 'GM') && (
+            {((tab === 'plan' && reqView === 'materials' && !canPurchase && has(user, 'Project Manager', 'GM')) || (tab === 'purchase-plan' && canPurchase)) && (
               <button
                 className="secondary"
                 title="Site work postponed? Move approved lines to a later week without new approval."
@@ -1453,7 +1496,17 @@ export default function Control({ user, testUserSwitch }: any) {
               window={window}
               refresh={refresh}
               openRecord={setSelected}
+              canEdit={canPurchase}
             />
+            {tab === 'purchase-plan' && canPurchase && (
+              <Dialog open={carryOpen} onOpenChange={setCarryOpen}>
+                <DialogContent className="wide-dialog">
+                  <DialogTitle>Work slipped? Move lines to a later week</DialogTitle>
+                  <DialogDescription>No new approval needed.</DialogDescription>
+                  <CarryForward inline period={period} records={records} project={project} window={window} refresh={refresh} />
+                </DialogContent>
+              </Dialog>
+            )}
           </TabsContent>
           <TabsContent value="grn">
             <ReceiveGoods
@@ -1500,6 +1553,7 @@ export default function Control({ user, testUserSwitch }: any) {
           <TabsContent value="weekly">
             <Dashboard period={period}
               user={user}
+              noCash={boqOnly}
               records={records}
               window={window}
               setWindow={setWindow}

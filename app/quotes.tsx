@@ -20,7 +20,7 @@ function useAction(refresh:any){
  return {busy,error,message,run};
 }
 
-function Budgets({records,projects,project,user,refresh}:any){
+function Budgets({records,projects,project,user,refresh,trade}:any){
  const canSet=has(user,'BOQ Team','GM');
  // Project list: configured projects this person can see, plus any project that already has a request or budget.
  const codes=[...new Set<string>([...projects.filter((p:any)=>p.active).map((p:any)=>p.project),...records.filter((r:any)=>['quote','budget'].includes(r.kind)).map((r:any)=>r.project)])].filter(c=>project==='all'||c===project).sort();
@@ -28,24 +28,25 @@ function Budgets({records,projects,project,user,refresh}:any){
  const [edit,setEdit]=useState<string>(''),[amount,setAmount]=useState(''),[note,setNote]=useState('');const act=useAction(refresh);
  if(!list.length)return null;
  return <section className="panel quote-budgets">
-  <div className="tablebar"><div><h2>Budgets per house</h2><p>Set once per project by BOQ. Every quote BOQ chooses is taken from what is left.</p></div></div>
-  <div className="plan-scroll"><table className="grn-table"><thead><tr><th>Project</th>{TRADES.map(t=><th key={t}>{t}: budget · chosen · left</th>)}</tr></thead><tbody>
-   {list.map((p:any)=><tr key={p.project}><td><b>{p.project}</b><small>{p.name}</small></td>{TRADES.map(t=>{const b=budgetFor(records,p.project,t),used=committed(records,p.project,t),key=p.project+'|'+t;return <td key={t}>
-    {b?<span className="nw">{rupees(b.amount)} · {rupees(used)} · <b className={b.amount-used<0?'neg':''}>{rupees(b.amount-used)}</b></span>:<span className="muted-inline">Not set</span>}
-    {canSet&&(edit===key?<form className="quote-inline" onSubmit={async e=>{e.preventDefault();if(await act.run(()=>api({action:'budget',project:p.project,trade:t,amount:Number(amount),note,version:b?.version||0}),`${t} budget for ${p.project} saved.`))setEdit('');}}>
-     <input className="plan-input num" type="number" min={1} step="0.01" required placeholder="Budget ₹" aria-label={`${t} budget, project ${p.project}`} value={amount} onChange={e=>setAmount(e.target.value)}/>
+  <div className="tablebar"><div><h2>{trade} budget per house</h2><p>Set once per project by BOQ. Every quote BOQ chooses is taken from what is left.</p></div></div>
+  <div className="plan-scroll"><table className="grn-table budget-table"><thead><tr><th>Project</th><th className="num">Budget</th><th className="num">Chosen</th><th className="num">Left</th>{canSet&&<th></th>}</tr></thead><tbody>
+   {list.map((p:any)=>{const b=budgetFor(records,p.project,trade),used=committed(records,p.project,trade),key=p.project+'|'+trade;return <tr key={p.project}>
+    <td><b>{p.project}</b><small>{p.name}</small></td>
+    {b?<><td className="num">{rupees(b.amount)}</td><td className="num">{rupees(used)}</td><td className="num"><b className={b.amount-used<0?'neg':''}>{rupees(b.amount-used)}</b></td></>:<td colSpan={3} className="muted-inline">Not set</td>}
+    {canSet&&<td>{edit===key?<form className="quote-inline" onSubmit={async e=>{e.preventDefault();if(await act.run(()=>api({action:'budget',project:p.project,trade,amount:Number(amount),note,version:b?.version||0}),`${trade} budget for ${p.project} saved.`))setEdit('');}}>
+     <input className="plan-input num" type="number" min={1} step="0.01" required placeholder="Budget ₹" aria-label={`${trade} budget, project ${p.project}`} value={amount} onChange={e=>setAmount(e.target.value)}/>
      <input className="plan-input" placeholder="Note (optional)" value={note} onChange={e=>setNote(e.target.value)}/>
      <button className="secondary" disabled={act.busy}>Save</button><button type="button" className="textbutton" onClick={()=>setEdit('')}>Cancel</button>
-    </form>:<button className="textbutton" onClick={()=>{setEdit(key);setAmount(b?String(b.amount/100):'');setNote('');}}>{b?'Change':'Set budget'}</button>)}
-   </td>;})}</tr>)}
+    </form>:<button className="textbutton" onClick={()=>{setEdit(key);setAmount(b?String(b.amount/100):'');setNote('');}}>{b?'Change':'Set budget'}</button>}</td>}
+   </tr>;})}
   </tbody></table></div>
   {act.error&&<p className="alert red quote-msg" role="alert">{act.error}</p>}{act.message&&<p className="alert green quote-msg" role="status">{act.message}</p>}
  </section>;
 }
 
-function NewRequest({projects,project,user,refresh}:any){
+function NewRequest({projects,project,user,refresh,trade='Plumbing'}:any){
  const mine=projects.filter((p:any)=>p.active);
- const [f,setF]=useState({project:project!=='all'?project:(mine[0]?.project||''),trade:'Plumbing',neededBy:addDays(indiaToday(),14),activity:'',note:''});
+ const [f,setF]=useState({project:project!=='all'?project:(mine[0]?.project||''),trade,neededBy:addDays(indiaToday(),14),activity:'',note:''});
  const [files,setFiles]=useState<File[]>([]),[open,setOpen]=useState(false);const act=useAction(refresh);
  async function submit(e:any){e.preventDefault();if(!files.length)return;
   const ok=await act.run(async()=>{const d=await api({action:'create',...f});for(const file of files)await upload(file,{project:f.project,window:d.window,vendor:f.trade,type:'Site list',recordIds:[d.id],reference:f.activity||`${f.trade} list`,uploadedBy:user.name});},'Sent to Purchase with the photo.',true);
@@ -166,19 +167,20 @@ function Card({r,records,documents,user,refresh}:any){
 }
 
 export default function QuoteRequests({records,documents,projects,project,period,user,refresh}:{records:any[];documents:any[];projects:any[];project:string;period:Period;user:any;refresh:any}){
- const [show,setShow]=useState('open');
+ const [show,setShow]=useState('open'),[trade,setTrade]=useState<string>('Plumbing');
  const mine=(r:any)=>(r.stage==='Awaiting quotes'&&has(user,'Purchase Manager','Purchase Team'))||(r.stage==='With BOQ'&&has(user,'BOQ Team'))||(r.stage==='BOQ selected'&&has(user,'Audit'))||(r.stage==='Audit approved'&&!orderFor(r,records)&&has(user,'Purchase Manager','Purchase Team'));
- const list=useMemo(()=>records.filter(r=>r.kind==='quote'&&(project==='all'||r.project===project)).sort((a,b)=>String(a.neededBy).localeCompare(String(b.neededBy))),[records,project]);
+ const all=useMemo(()=>records.filter(r=>r.kind==='quote'&&(project==='all'||r.project===project)),[records,project]);
+ const list=useMemo(()=>all.filter(r=>r.trade===trade).sort((a,b)=>String(a.neededBy).localeCompare(String(b.neededBy))),[all,trade]);
  const open=(r:any)=>!['Rejected','Cancelled'].includes(r.stage)&&!(orderFor(r,records)?.status==='Delivered');
  const shown=list.filter(r=>show==='mine'?mine(r):show==='open'?open(r):inPeriod(r.window,period));
  const counts={mine:list.filter(mine).length,open:list.filter(open).length,period:list.filter(r=>inPeriod(r.window,period)).length};
  const seesBudget=has(user,'GM','BOQ Team','Audit','Purchase Manager','Purchase Team','Accounts');
  return <div className="quotes">
-  
-  {has(user,'Site Engineer','Project Manager','GM')&&<NewRequest projects={projects} project={project} user={user} refresh={refresh}/>}
-  {seesBudget&&<Budgets records={records} projects={projects} project={project} user={user} refresh={refresh}/>}
+  <div className="view-switch trade-switch" role="group" aria-label="Trade">{TRADES.map(t=>{const n=all.filter(r=>r.trade===t&&mine(r)).length;return <button key={t} className={trade===t?'chosen':''} aria-pressed={trade===t} onClick={()=>setTrade(t)}>{t}{n>0&&<span className="tag amber">{n}</span>}</button>;})}</div>
+  {has(user,'Site Engineer','Project Manager','GM')&&<NewRequest key={trade} trade={trade} projects={projects} project={project} user={user} refresh={refresh}/>}
+  {seesBudget&&<Budgets trade={trade} records={records} projects={projects} project={project} user={user} refresh={refresh}/>}
   <div className="view-switch quote-filter">{[['mine','Waiting for me',counts.mine],['open','All open',counts.open],['period','Needed in selected weeks',counts.period]].map(([k,l,n]:any)=><button key={k} className={show===k?'chosen':''} onClick={()=>setShow(k)}>{l}<span>{n}</span></button>)}</div>
   {shown.map(r=><Card key={r.id} r={r} records={records} documents={documents} user={user} refresh={refresh}/>)}
-  {!shown.length&&<div className="panel empty"><h3>Nothing here</h3><p>{show==='mine'?'No plumbing or electrical request is waiting for you.':'No plumbing or electrical requests yet.'}</p></div>}
+  {!shown.length&&<div className="panel empty"><h3>Nothing here</h3><p>{show==='mine'?`No ${trade.toLowerCase()} request is waiting for you.`:`No ${trade.toLowerCase()} requests yet.`}</p></div>}
  </div>;
 }

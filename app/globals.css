@@ -379,3 +379,12 @@ button.danger{color:#a1312a}
 .dark .forecast-split .variation-row td{background:#3a321d}.dark .forecast-split .total-row td{background:#1d2b35}
 .rate-pick{display:flex;align-items:center;gap:12px;margin:10px 0 14px;flex-wrap:wrap}.rate-preview{max-height:340px;overflow:auto;margin-bottom:8px}.rate-preview td small{color:var(--muted-foreground)}.rate-intro .actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .textbutton.inline{display:inline;padding:0;font-size:inherit}
+.nav-count{margin-left:auto;min-width:22px;height:20px;padding:0 7px;border-radius:999px;background:#e3ece9;color:#1f5c53;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}.nav-count.red{background:#d63c31;color:#fff}.dark .nav-count{background:#25473f;color:#b0edde}.dark .nav-count.red{background:#c2453b;color:#fff}
+.sort-field{flex-direction:row;align-items:center;gap:8px;margin-left:auto;margin-right:10px}.sort-field select{height:36px;border:1px solid var(--border);border-radius:6px;padding:0 8px;background:var(--card);color:var(--foreground);font-size:13px}
+.rate-intro .actions{flex-wrap:nowrap;flex-shrink:0}
+.plan-project{margin-bottom:14px}.plan-project-bar{gap:14px}.plan-actions{display:flex;flex-wrap:nowrap;gap:10px;align-items:center;flex-shrink:0}.plan-result{margin:0 24px 14px}
+.budget-table th.num,.budget-table td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.trade-switch{margin:0 0 14px}.trade-switch .tag{margin-left:8px}
+.order-filters{align-items:flex-end;flex-wrap:wrap}.order-switch{margin:0}
+@media(max-width:650px){.plan-project-bar{flex-direction:column;align-items:flex-start}.plan-actions{flex-wrap:wrap}.sort-field{margin-left:0}}
+.plan-project .plan-scroll td:first-child{min-width:210px}.plan-project .plan-scroll td:nth-child(2){min-width:0}
