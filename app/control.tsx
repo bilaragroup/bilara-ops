@@ -787,7 +787,11 @@ export default function Control({ user, testUserSwitch }: any) {
       // Editing: send only what actually changed. The form fills defaults (status, priority,
       // cost fields…) that the saved request never had; sending them made the server refuse
       // the save for roles that may change only a few fields (e.g. Purchase, BOQ).
-      const saved = draft.id ? records.find((x) => x.id === draft.id) : null;
+      // Only for editing a request; payments ('settle') and other actions send their full form.
+      const saved =
+        draft.id && !draft.action && ['plan', 'request'].includes(draft.kind)
+          ? records.find((x) => x.id === draft.id)
+          : null;
       const same = (x: any, y: any) =>
         (x ?? '') === (y ?? '') ||
         ((x === 0 || x === '' || x == null) && (y == null || y === '')) ||
