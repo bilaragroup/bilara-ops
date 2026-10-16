@@ -11,6 +11,7 @@ import {
 import {
   defaultSettings,
   findProjectRate,
+  rateCardLabel,
   purchaseTarget,
 } from '@/lib/settings';
 import { validateWorkflow } from '@/lib/workflow';
@@ -135,6 +136,7 @@ for (const kind of ['plan', 'request'])
     'boqOriginalRate',
     'targetDiscountPercent',
     'rateSource',
+    'rateCard',
     'vendor',
     'vendorPhone',
     'quoteRate',
@@ -445,6 +447,7 @@ async function handlePOST(req: Request, a: Actor) {
         data.boqOriginalRate = catalogue.originalRate;
         data.targetDiscountPercent = catalogue.discountPercent;
         data.rateSource = 'Project rate catalogue';
+        data.rateCard = rateCardLabel(catalogue);
         data.boqOwner = 'Rate catalogue';
         if (kind === 'plan') data.boqRate = purchaseTarget(catalogue);
         else data.estimateRate = purchaseTarget(catalogue);

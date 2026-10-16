@@ -5,6 +5,7 @@ import RequestAccess from './request-access';
 import { has, confidential } from '@/lib/permissions';
 import RecordSummary from './record-summary';
 import SettingsPage from './settings';
+import RateCards from './rate-cards';
 import { defaultSettings } from '@/lib/settings';
 import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
@@ -19,6 +20,7 @@ import { SiteDashboard, SiteLabour, DprCompliance, QcAttendance, SitePurchase, E
 import { SiteQuality, SiteQcVisits } from './site-qc';
 import { siteCall, siteRoleOf } from '@/lib/site-client';
 import { milestoneLabel, activityOf, activitiesOfMilestone } from '@/lib/activities';
+import { rateAppliesTo } from '@/lib/settings';
 import QuoteRequests from './quotes';
 import BillCheck from './bill-check';
 import AuditReview from './audit-review';
@@ -90,6 +92,7 @@ import {
   Building2,
   UserCog,
   HardHat,
+  IndianRupee,
   ClipboardCheck,
   Boxes,
 } from 'lucide-react';
@@ -1242,6 +1245,7 @@ export default function Control({ user, testUserSwitch }: any) {
               ['payment', 'Payment forecast', Wallet],
               ['documents', 'Documents', ClipboardList],
               ['backup', 'Backups', Download],
+              ['rate-cards', 'Rate cards', IndianRupee],
               ['projects', 'Projects', Building2],
               ['users', 'Users & roles', UserCog],
               ['settings', 'Settings', ShieldCheck],
@@ -1254,6 +1258,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     has(user)) &&
                   (v !== 'purchase-plan' || canPurchase || canPrivate) &&
                   (v !== 'audit' || has(user, 'Audit', 'GM')) &&
+                  (v !== 'rate-cards' || has(user, 'BOQ Team', 'GM', 'Audit')) &&
                   (v !== 'grn' ||
                     has(user, 'Site Engineer', 'QC', 'Project Manager', 'Purchase Manager', 'Purchase Team')) &&
                   (!siteTabs.includes(String(v)) || (siteTabRoles[String(v)] || []).includes(siteRole)) &&
@@ -1289,6 +1294,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     'purchase-plan': 'Purchase plan',
                     audit: 'Audit review',
                     grn: 'Receive goods (GRN)',
+                    'rate-cards': 'Rate cards',
                     ...siteLabels,
                     quotes: 'Plumbing & electrical',
                     projects: 'Projects',
@@ -1332,7 +1338,7 @@ export default function Control({ user, testUserSwitch }: any) {
               <button onClick={() => setNotice('')}>Dismiss</button>
             </div>
           )}
-          {!['settings', 'projects', 'users', ...siteTabs].includes(tab) && (
+          {!['settings', 'projects', 'users', 'rate-cards', ...siteTabs].includes(tab) && (
             <div className="context-bar">
               <label className="field">
                 <span>Project</span>
@@ -1443,6 +1449,11 @@ export default function Control({ user, testUserSwitch }: any) {
           </TabsContent>
           <TabsContent value="site-stock">
             {tab === 'site-stock' && (siteBoot ? <SiteStock boot={siteBoot} /> : <p className="muted">Loading…</p>)}
+          </TabsContent>
+          <TabsContent value="rate-cards">
+            {tab === 'rate-cards' && (
+              <RateCards settings={settings} onSaved={setSettings} canEdit={has(user, 'BOQ Team')} projects={projectConfigs} />
+            )}
           </TabsContent>
           <TabsContent value="site-quality">{tab === 'site-quality' && (siteBoot ? <SiteQuality boot={siteBoot} /> : <p className="muted">Loading…</p>)}</TabsContent>
           <TabsContent value="site-qc">{tab === 'site-qc' && (siteBoot ? <SiteQcVisits boot={siteBoot} /> : <p className="muted">Loading…</p>)}</TabsContent>
@@ -2898,7 +2909,7 @@ function MultiItemRequest({
   const hasRate = (item: string) =>
     (settings.catalogItems || settings.projectRates || []).some(
       (r: any) =>
-        String(r.project) === String(draft.project) &&
+        rateAppliesTo(r, draft.project) &&
         String(r.item).trim().toLowerCase() ===
           String(item).trim().toLowerCase(),
     );

@@ -1,14 +1,44 @@
 import { MILESTONE_NUMBERS } from './activities';
+/**
+ * One line of a rate card. A rate card is all lines with the same scope:
+ *  - default  every project (unless a range or project card has the item)
+ *  - range    projects fromProject..toProject, e.g. 120-150
+ *  - project  one project (older lines have no scope and are project lines)
+ * The most specific card wins: project, then range, then default.
+ */
+export type RateScope = 'default' | 'range' | 'project';
 export type ProjectRate = {
   id: string;
+  scope?: RateScope;
   project: string;
+  fromProject?: string;
+  toProject?: string;
   item: string;
   unit: string;
   originalRate: number;
   discountPercent: number;
   active: boolean;
   source?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 };
+export const scopeOf = (r: Partial<ProjectRate>): RateScope => r.scope === 'default' || r.scope === 'range' ? r.scope : 'project';
+/** "default", "range:120-150" or "project:120": lines with the same key form one rate card. */
+export function rateCardKey(r: Partial<ProjectRate>) {
+  const scope = scopeOf(r);
+  return scope === 'default' ? 'default' : scope === 'range' ? `range:${r.fromProject}-${r.toProject}` : `project:${r.project}`;
+}
+export function rateCardLabel(r: Partial<ProjectRate>) {
+  const scope = scopeOf(r);
+  return scope === 'default' ? 'Default rate card (all projects)' : scope === 'range' ? `Projects ${r.fromProject}–${r.toProject}` : `Project ${r.project}`;
+}
+export function rateAppliesTo(r: Partial<ProjectRate>, project: any) {
+  const p = Number(String(project ?? '').trim().replace(/\.0+$/, ''));
+  const scope = scopeOf(r);
+  if (scope === 'default') return true;
+  if (scope === 'range') return p >= Number(r.fromProject) && p <= Number(r.toProject);
+  return String(r.project).replace(/\.0+$/, '') === String(p);
+}
 export type Settings = {
   owners: string[];
   boqPreparers: string[];
@@ -39,18 +69,17 @@ export function findProjectRate(
       String(v ?? '')
         .trim()
         .toLowerCase(),
-    cleanProject = (v: any) => clean(v).replace(/\.0+$/, ''),
     cleanItem = (v: any) => clean(v).replace(/[^a-z0-9]/g, ''),
     matches = settings.projectRates.filter(
-      (r) =>
-        r.active &&
-        cleanProject(r.project) === cleanProject(project) &&
-        cleanItem(r.item) === cleanItem(item),
+      (r) => r.active && cleanItem(r.item) === cleanItem(item) && rateAppliesTo(r, project),
     );
-  return (
-    matches.find((r) => clean(r.unit) === clean(unit)) ||
-    matches.find((r) => clean(r.unit) === '*')
-  );
+  // The most specific rate card wins; within a card an exact unit beats "any unit".
+  for (const scope of ['project', 'range', 'default'] as RateScope[]) {
+    const own = matches.filter((r) => scopeOf(r) === scope);
+    const found = own.find((r) => clean(r.unit) === clean(unit)) || own.find((r) => clean(r.unit) === '*');
+    if (found) return found;
+  }
+  return undefined;
 }
 export function purchaseTarget(rule: ProjectRate) {
   return (
@@ -97,19 +126,26 @@ export function validateSettings(value: any): Settings {
   const discount = 5;
   result.targetDiscountPercent = discount;
   const rates = Array.isArray(value?.projectRates) ? value.projectRates : [];
-  if (rates.length > 2000)
-    throw Error('Configure at most 2,000 project item rates.');
+  if (rates.length > 5000)
+    throw Error('Configure at most 5,000 rate-card lines.');
+  const projectNo = (v: any) => String(v ?? '').trim().replace(/\.0+$/, '');
   result.projectRates = rates.map((r: any) => {
-    const project = String(r?.project || '').trim(),
+    const scope = scopeOf(r),
+      project = scope === 'project' ? projectNo(r?.project) : '',
+      fromProject = scope === 'range' ? projectNo(r?.fromProject) : '',
+      toProject = scope === 'range' ? projectNo(r?.toProject) : '',
       item = String(r?.item || '').trim(),
-      unit = String(r?.unit || '').trim(),
+      unit = String(r?.unit || '').trim() || '*',
       originalRate = Number(r?.originalRate),
       discountPercent = Number(r?.discountPercent ?? discount);
+    const valid = (p: string) => /^[1-9][0-9]{2}$/.test(p);
+    if (scope === 'project' && !valid(project))
+      throw Error('A project rate card needs a project number from 100 to 999.');
+    if (scope === 'range' && (!valid(fromProject) || !valid(toProject) || Number(fromProject) >= Number(toProject)))
+      throw Error('A range rate card needs two project numbers from 100 to 999, the first smaller than the second.');
     if (
-      !/^[1-9][0-9]{2}$/.test(project) ||
       !item ||
       item.length > 200 ||
-      !unit ||
       unit.length > 30 ||
       !Number.isFinite(originalRate) ||
       originalRate <= 0 ||
@@ -119,24 +155,34 @@ export function validateSettings(value: any): Settings {
       discountPercent > 50
     )
       throw Error(
-        'Each project rate needs project 100–999, item, unit, positive BOQ rate and a 0%–50% reduction.',
+        'Each rate needs an item, a positive BOQ rate and a 0%–50% reduction.',
       );
     return {
       id: String(r.id || crypto.randomUUID()),
+      ...(scope === 'project' ? {} : { scope }),
       project,
+      ...(scope === 'range' ? { fromProject, toProject } : {}),
       item,
       unit,
       originalRate,
       discountPercent,
       active: r.active !== false,
       ...(r.source ? { source: String(r.source).slice(0, 100) } : {}),
+      ...(r.updatedAt ? { updatedAt: String(r.updatedAt).slice(0, 40) } : {}),
+      ...(r.updatedBy ? { updatedBy: String(r.updatedBy).slice(0, 120) } : {}),
     };
   });
   const keys = result.projectRates.map((r: ProjectRate) =>
-    [r.project, r.item.toLowerCase(), r.unit.toLowerCase()].join('|'),
+    [rateCardKey(r), r.item.toLowerCase(), r.unit.toLowerCase()].join('|'),
   );
   if (new Set(keys).size !== keys.length)
-    throw Error('Remove duplicate project, item and unit rates.');
+    throw Error('A rate card has the same item and unit twice.');
+  // Two ranges may not share a project, so it is always clear which card applies.
+  const ranges = [...new Map(result.projectRates.filter((r: ProjectRate) => scopeOf(r) === 'range').map((r: ProjectRate) => [rateCardKey(r), r])).values()] as ProjectRate[];
+  ranges.forEach((a, i) => ranges.slice(i + 1).forEach((b) => {
+    if (Number(a.fromProject) <= Number(b.toProject) && Number(b.fromProject) <= Number(a.toProject))
+      throw Error(`${rateCardLabel(b)} overlaps ${rateCardLabel(a)}. Use ranges that do not share projects.`);
+  }));
   result.rateCardImportedAt =
     typeof value?.rateCardImportedAt === 'string' &&
     /^\d{4}-\d{2}-\d{2}T/.test(value.rateCardImportedAt)
