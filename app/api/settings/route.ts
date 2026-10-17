@@ -2,11 +2,11 @@ import {sameOrigin} from '@/lib/access';
 import {protect} from '@/lib/access';
 import {Actor,confidential,cleanSettings} from '@/lib/permissions';
 import {database} from '@/lib/database';
-import {defaultSettings,validateSettings} from '@/lib/settings';
+import {defaultSettings,validateSettings,ITEM_CATEGORIES} from '@/lib/settings';
 import {MILESTONE_NUMBERS} from '@/lib/activities';
 async function handleGET(req:Request,a:Actor){try{const row=await database().prepare("SELECT * FROM settings WHERE id='main'").first<any>(),values=row?{...defaultSettings,...JSON.parse(row.data)}:defaultSettings;
 // Only the company milestones (1-5) are offered, even if an older saved list had more.
-values.milestones=(values.milestones||[]).filter((m:any)=>MILESTONE_NUMBERS.includes(String(m)));if(!values.milestones.length)values.milestones=defaultSettings.milestones;return Response.json({values:confidential(a)?values:cleanSettings(values),version:row?.version||0},{headers:{'Cache-Control':'no-store'}});}catch{return Response.json({error:'Settings are unavailable.'},{status:503});}}
+values.milestones=(values.milestones||[]).filter((m:any)=>MILESTONE_NUMBERS.includes(String(m)));if(!values.milestones.length)values.milestones=defaultSettings.milestones;values.itemCategories=ITEM_CATEGORIES;return Response.json({values:confidential(a)?values:cleanSettings(values),version:row?.version||0},{headers:{'Cache-Control':'no-store'}});}catch{return Response.json({error:'Settings are unavailable.'},{status:503});}}
 async function handlePOST(req:Request,a:Actor){try{
  if(!sameOrigin(req))return Response.json({error:'Origin not allowed'},{status:403});
  const text=await req.text();if(text.length>70000)throw Error('Settings are too large.');const b=JSON.parse(text),values=validateSettings({...b.values,projectRates:[]}),db=database(),now=new Date().toISOString();if(!Number.isInteger(b.version)||b.version<0)throw Error('Refresh settings before saving.');

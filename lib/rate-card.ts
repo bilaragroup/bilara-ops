@@ -4,9 +4,9 @@ export const RATE_CARD_URL='https://docs.google.com/spreadsheets/d/1h3dJG5tZcZe3
 export const RATE_CARD_EXPORT_URL='https://docs.google.com/spreadsheets/d/1h3dJG5tZcZe3h-OTXqtCMGoAXMcH1-Zcss3rjxxrfRU/export?format=xlsx&gid=0';
 export const RATE_CARD_ITEMS=['Hitachi','Cement','MSand','20 mm Metal','PSand','Solid Cement Blocks 12 x 8 x 6','Solid Cement Blocks 12 x 8 x 4','Red Bricks','Laterite Stone','8 mm Steel','10 mm Steel','12 mm Steel','16 mm Steel','20 mm Steel','Tile Gum','Shuttering Items'] as const;
 export const RATE_CARD_ITEM_DEFAULTS:Record<string,{itemCategory:string;unit:string}>={
- 'Hitachi':{itemCategory:'Tools & Equipment',unit:'HOUR'},'Cement':{itemCategory:'Materials',unit:'BAG'},'MSand':{itemCategory:'Materials',unit:'CFT'},'20 mm Metal':{itemCategory:'Materials',unit:'CFT'},'PSand':{itemCategory:'Materials',unit:'CFT'},
+ 'Hitachi':{itemCategory:'Rentals',unit:'HOUR'},'Cement':{itemCategory:'Materials',unit:'BAG'},'MSand':{itemCategory:'Materials',unit:'CFT'},'20 mm Metal':{itemCategory:'Materials',unit:'CFT'},'PSand':{itemCategory:'Materials',unit:'CFT'},
  'Solid Cement Blocks 12 x 8 x 6':{itemCategory:'Materials',unit:'NOS'},'Solid Cement Blocks 12 x 8 x 4':{itemCategory:'Materials',unit:'NOS'},'Red Bricks':{itemCategory:'Materials',unit:'NOS'},'Laterite Stone':{itemCategory:'Materials',unit:'NOS'},
- '8 mm Steel':{itemCategory:'Materials',unit:'KG'},'10 mm Steel':{itemCategory:'Materials',unit:'KG'},'12 mm Steel':{itemCategory:'Materials',unit:'KG'},'16 mm Steel':{itemCategory:'Materials',unit:'KG'},'20 mm Steel':{itemCategory:'Materials',unit:'KG'},'Tile Gum':{itemCategory:'Materials',unit:'KG'},'Shuttering Items':{itemCategory:'Tools & Equipment',unit:'LOT'}
+ '8 mm Steel':{itemCategory:'Materials',unit:'KG'},'10 mm Steel':{itemCategory:'Materials',unit:'KG'},'12 mm Steel':{itemCategory:'Materials',unit:'KG'},'16 mm Steel':{itemCategory:'Materials',unit:'KG'},'20 mm Steel':{itemCategory:'Materials',unit:'KG'},'Tile Gum':{itemCategory:'Materials',unit:'KG'},'Shuttering Items':{itemCategory:'Shuttering Items',unit:'LOT'}
 };
 
 const text=(value:any)=>String(value??'').trim();

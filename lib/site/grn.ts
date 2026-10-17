@@ -43,6 +43,34 @@ async function purchaseRecords(s: Site) {
   return (r.results || []).map(decode);
 }
 
+/** Item categories that are hired, not kept in site stock (no stock posting on GRN). */
+const NOT_STOCKED = ['rentals', 'rental', 'services', 'tools & equipment'];
+export function stockedCategory(category: any) { return !NOT_STOCKED.includes(String(category || '').trim().toLowerCase()); }
+function categoryOf(records: any[], p: any) {
+  const parent = records.find((r: any) => r.id === p.parent);
+  return String(parent?.itemCategory || p.itemCategory || 'Materials');
+}
+const cleanName = (v: any) => String(v || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+/** The site stock item a PO line goes into: same name in the item list, else added to it now. */
+async function stockCodeFor(s: Site, p: any, category: string): Promise<string> {
+  const defs = (await activeGrnMaterialDefinitions(s)).filter((d) => !d.ginOnly);
+  const wanted = cleanName(p.item);
+  const hit = defs.find((d) => cleanName(d.name) === wanted || cleanName(d.code) === wanted);
+  if (hit) return hit.code;
+  const slug = String(p.item || 'ITEM').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48) || 'ITEM';
+  const prefix = /shutter/i.test(category) ? 'SHUTTERING_' : /other/i.test(category) ? 'OTHER_' : 'MATERIAL_';
+  let code = prefix + slug, n = 2;
+  const all = await s.read('GRN_Item_Master');
+  while (all.some((r) => String(r.Item_Code || '').toUpperCase() === code)) code = prefix + slug + '_' + n++;
+  const unit = String(p.unit || 'NOS').trim();
+  await s.append('GRN_Item_Master', {
+    Item_Code: code, Category: category.toUpperCase(), Subcategory: '', Item_Name: String(p.item || '').trim(), Stock_Unit: unit, Input_Units: unit.toUpperCase(),
+    Variants: '', Active: 'Yes', Purchase_Notes: 'Added automatically from a GRN', Validation_Status: 'VALID', Validation_Message: '', Last_Imported_At: s.now(),
+  });
+  (s as any)._grnDefs = null;
+  return code;
+}
+
 /** Open PO lines for a site, for the Receive goods page. */
 export async function getReceiveGoodsWorkspace(s: Site, actor: Actor, projectId: any) {
   const user = s.requireRole(PO_GRN_ROLES);
@@ -56,6 +84,7 @@ export async function getReceiveGoodsWorkspace(s: Site, actor: Actor, projectId:
       id: p.id, version: p.version, po: p.po || '', orderId: p.orderId || p.id, item: p.item, vendor: p.vendor || '', unit: p.unit || '',
       ordered: Number(p.qty || 0), accepted: acceptedQty(p), pending: pendingQty(p), delivery: p.delivery || '',
       suggestedMaterialCode: byName.get(String(p.item || '').trim().toLowerCase()) || '',
+      itemCategory: categoryOf(records, p), stocked: stockedCategory(categoryOf(records, p)),
       receipts: receipts(p).map((x: any) => ({grnNo: x.grnNo, date: x.date, accepted: x.accepted, rejected: x.rejected})),
     }));
   const awaiting = (await s.filter('GRN_Register', (g) => String(g.Project_ID) === String(projectId) && String(g.PO_Link_Status || '') === 'AWAITING PO' && String(g.Status) === 'COMMITTED'))
@@ -111,8 +140,11 @@ export async function receivePurchaseOrder(s: Site, actor: Actor, payload: any) 
     const {p, input} = lines[i];
     const accepted = dprNumber(input.accepted ?? input.received, 'PO line ' + (i + 1) + ' accepted quantity', false);
     if (!(accepted > 0)) continue;
-    const code = String(input.materialCode || '').trim().toUpperCase();
-    if (!code) throw new SiteError(p.item + ': choose the site stock item this delivery goes into.');
+    // Rentals (and other hired items) are received for payment but never enter site stock.
+    const category = categoryOf(records, p);
+    if (!stockedCategory(category)) continue;
+    // The stock item is found from the item name; a new item is added to the list automatically.
+    const code = String(input.materialCode || '').trim().toUpperCase() || await stockCodeFor(s, p, category);
     const measured = (code === 'STEEL' && String(input.inputUnit || '').toUpperCase() === 'BUNDLES') || ['AGGREGATE', 'M_SAND', 'P_SAND'].includes(code);
     let quantity: number | undefined;
     if (!measured) {

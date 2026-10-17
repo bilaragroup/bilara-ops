@@ -194,7 +194,7 @@ try{
  done('Step 1 · PM requests waiting for the BOQ team (Laterite Stone; Red Bricks for the week after)');
 
  // 1b. Request above the BOQ quantity — the GM decides.
- const over=await raise('902','Hitachi','HOUR',20,W,2,{milestone:'1',activityName:'Foundation excavation',category:'Tools & Equipment',notes:'Rock found during excavation; 4 hours more than the BOQ'});
+ const over=await raise('902','Hitachi','HOUR',20,W,2,{milestone:'1',activityName:'Foundation excavation',category:'Rentals',notes:'Rock found during excavation; 4 hours more than the BOQ'});
  await boqApprove(over,16,false);
  done(`Step 1b · Request above the BOQ quantity waiting for the GM (Hitachi 20 h against 16 h${(await get(over)).gmApproval?.state==='Pending'?'':' — check: no GM step was created'})`);
 
@@ -248,7 +248,7 @@ try{
  done('Step 7 · GRN by site, bill matched by Accounts, paid by UPI with receipt, request closed (Solid Cement Blocks)');
 
  // 8. Rejected by Audit; cancelled by the PM.
- const shut=await raise('901','Shuttering Items','LOT',1,W,6,{milestone:'1',activityName:'Mat shuttering work',category:'Tools & Equipment'});await boqApprove(shut,1);await quote(shut,'Metro Rentals','98470 45678',23500,'MR-019');
+ const shut=await raise('901','Shuttering Items','LOT',1,W,6,{milestone:'1',activityName:'Mat shuttering work',category:'Shuttering Items'});await boqApprove(shut,1);await quote(shut,'Metro Rentals','98470 45678',23500,'MR-019');
  await audit(shut,'Rejected','Above the BOQ rate. Use company shuttering stock instead.');
  const bricks=await raise('901','Red Bricks','NOS',500,W,21,{milestone:'2',activityName:'Superstructure brick work up to G/F lintel'});
  const rb=await get(bricks);await call('cancel-request',{id:bricks,version:rb.version,reason:'Design changed to cement blocks for this wall',confirmed:true},P.pm);

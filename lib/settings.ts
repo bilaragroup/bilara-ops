@@ -39,6 +39,8 @@ export function rateAppliesTo(r: Partial<ProjectRate>, project: any) {
   if (scope === 'range') return p >= Number(r.fromProject) && p <= Number(r.toProject);
   return String(r.project).replace(/\.0+$/, '') === String(p);
 }
+/** Item categories (fixed list; subcategories come later). Rentals are not kept in site stock. */
+export const ITEM_CATEGORIES = ['Materials', 'Rentals', 'Shuttering Items', 'Other Items'];
 export type Settings = {
   owners: string[];
   boqPreparers: string[];
@@ -52,7 +54,7 @@ export type Settings = {
 export const defaultSettings: Settings = {
   owners: ['Jithin', 'Jiby', 'Rosmi', 'Sneha', 'Stevo'],
   boqPreparers: ['Subha', 'Shilpa', 'Sachin Surendran'],
-  itemCategories: ['Materials', 'Tools & Equipment', 'Services'],
+  itemCategories: ITEM_CATEGORIES,
   milestones: ['1', '2', '3', '4', '5'],
   targetDiscountPercent: 5,
   projectRates: [],
@@ -192,5 +194,6 @@ export function validateSettings(value: any): Settings {
     typeof value?.rateCardImportedFile === 'string'
       ? value.rateCardImportedFile.slice(0, 200)
       : '';
+  result.itemCategories = ITEM_CATEGORIES;
   return result;
 }

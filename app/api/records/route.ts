@@ -10,6 +10,7 @@ import {
   has,
 } from '@/lib/permissions';
 import {
+  ITEM_CATEGORIES,
   defaultSettings,
   findProjectRate,
   rateCardLabel,
@@ -427,6 +428,7 @@ async function handlePOST(req: Request, a: Actor) {
         options = {
           ...defaultSettings,
           ...(savedSettings ? JSON.parse(savedSettings.data) : {}),
+          itemCategories: ITEM_CATEGORIES,
         };
       for (const [field, list] of [
         ['owner', 'owners'],
