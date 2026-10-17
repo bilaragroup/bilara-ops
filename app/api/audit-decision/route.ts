@@ -24,7 +24,7 @@ async function handlePOST(req:Request,a:Actor){try{
   if(!['plan','request'].includes(r.kind)||r.stage!=='Vendors finalized')return fail('Every selected line must be waiting for audit (vendor rates sent by Purchase).');
   if(r.closure?.state==='Closed')return fail('Reopen closed requests before deciding.');
   if(r.gmApproval&&r.gmApproval.state!=='Approved')return fail('A late request still needs the General Manager\'s approval.');
-  if(decision==='Approved'&&(!String(r.vendor||'').trim()||!(Number(r.quoteRate)>=0)||!String(r.quoteReference||'').trim()))return fail(`${r.item}: vendor, vendor rate and quotation reference are required before approval.`);
+  if(decision==='Approved'&&(!String(r.vendor||'').trim()||!(Number(r.quoteRate)>=0)))return fail(`${r.item}: vendor and vendor rate are required before approval.`);
   if(r.version!==Number(b.versions?.[id]))return fail('One or more lines changed. Refresh the purchase plan and retry.',409);
   rows.push({raw,r});
  }

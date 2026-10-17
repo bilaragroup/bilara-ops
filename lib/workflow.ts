@@ -52,7 +52,7 @@ export function validateWorkflow(kind:string,data:any,old:any,parent?:any){
  }
  if(['Vendors finalized','Audit approved'].includes(data.stage)){
   if(!data.entityConfirmed)return 'Purchase team must confirm Group or Builders before sending for approval.';
-  if(!String(data.vendor||'').trim()||data.quoteRate===''||!Number.isFinite(Number(data.quoteRate))||Number(data.quoteRate)<0||!String(data.quoteReference||'').trim())return 'Enter the selected vendor, quoted unit rate and quotation reference.';
+  if(!String(data.vendor||'').trim()||data.quoteRate===''||!Number.isFinite(Number(data.quoteRate))||Number(data.quoteRate)<0)return 'Enter the selected vendor and the vendor unit rate.';
   data.quoteRate=Number(data.quoteRate);
  }
  if(['Audit approved','Rejected'].includes(data.stage)&&(!String(data.auditOwner||'').trim()||!String(data.reviewNote||'').trim()))return 'Enter the auditor name and decision note.';

@@ -403,3 +403,4 @@ button.danger{color:#a1312a}
 .field input,.field select,.field textarea{box-sizing:border-box}
 .wide-dialog,.bulk-dialog{box-sizing:border-box;max-width:calc(100vw - 16px)!important}
 .wide-dialog{max-width:min(850px,calc(100vw - 16px))!important}.bulk-dialog{max-width:min(1000px,calc(100vw - 16px))!important}
+.process-button{padding:6px 14px!important;font-size:13px;min-height:0}

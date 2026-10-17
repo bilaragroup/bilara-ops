@@ -31,7 +31,7 @@ export default function PurchasePlan({records,project,window,period,refresh,open
  const set=(id:string,k:Exclude<keyof Edit,'version'>,v:string)=>setEdits(x=>({...x,[id]:{...x[id],[k]:v}}));
  const toPrice=rows.filter(editable),withAudit=rows.filter((r:any)=>r.stage==='Vendors finalized'),approved=rows.filter((r:any)=>r.stage==='Audit approved');
  const totals=planTotals(rows.map(draft));
- const ready=(r:any)=>{const e=edits[r.id];return !!e&&!!e.vendor.trim()&&e.quoteRate!==''&&Number(e.quoteRate)>=0&&!!e.quoteReference.trim();};
+ const ready=(r:any)=>{const e=edits[r.id];return !!e&&!!e.vendor.trim()&&e.quoteRate!==''&&Number(e.quoteRate)>=0;};
  const projects=[...new Set(rows.map((r:any)=>r.project))] as string[];
  // Save draft: changed lines only. Send to Audit: every complete line is saved and sent; incomplete changed lines are kept as a draft.
  async function save(p:string,send:boolean){
@@ -69,14 +69,13 @@ export default function PurchasePlan({records,project,window,period,refresh,open
     </div>
     {results?.project===p&&<p className={'alert plan-result '+(results.errors.length?'amber':'green')} role="status">{results.sent?`${results.sent} sent to Audit. `:''}{results.saved?`${results.saved} saved as draft. `:''}{!results.sent&&!results.saved&&!results.errors.length?'No changes to save.':''}{results.errors.join(' ')}</p>}
     {isOpen&&<div className="plan-scroll"><Table><TableHeader><TableRow>
-     <TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Target rate</TableHead><TableHead>Vendor</TableHead><TableHead>Vendor rate</TableHead><TableHead>Quote ref.</TableHead><TableHead>Entity</TableHead><TableHead>Value</TableHead><TableHead>Saving vs target</TableHead>
+     <TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Target rate</TableHead><TableHead>Vendor</TableHead><TableHead>Vendor rate</TableHead><TableHead>Entity</TableHead><TableHead>Value</TableHead><TableHead>Saving vs target</TableHead>
     </TableRow></TableHeader><TableBody>{list.map((r:any)=>{const e=edits[r.id],can=isEdit&&editable(r)&&!!e,d=draft(r),s=lineSaving(d);return <TableRow key={r.id} className={s.aboveTarget?'row-warn':''}>
      <TableCell><button className="rowlink" onClick={()=>openRecord(r)}><b>{r.item}{r.brand?` · ${r.brand}`:''}</b><span>M{r.milestone} · Act {r.activity} {r.activityName}{r.kind==='request'?' · Ad hoc':''}{multi?' · Week '+weekLabel(r.window):''}</span></button><div className="plan-status">{stageTag(r)}{changed(r)&&<span className="tag amber">Draft</span>}{r.reschedule?.from&&<span className="tag">Moved from {r.reschedule.from}</span>}</div>{r.auditReturn&&r.stage==='BOQ priced'&&<small className="audit-note">Audit: {r.auditReturn.note}</small>}</TableCell>
      <TableCell className="nw">{s.qty} {r.unit}</TableCell>
      <TableCell className="nw">{targetUnitRate(r)??'—'}</TableCell>
      <TableCell>{can?<><input className="plan-input" aria-label="Vendor" placeholder="Vendor" value={e.vendor} maxLength={200} onChange={x=>set(r.id,'vendor',x.target.value)}/><input className="plan-input small" aria-label="Vendor phone" placeholder="Phone" value={e.vendorPhone} maxLength={40} onChange={x=>set(r.id,'vendorPhone',x.target.value)}/></>:<>{d.vendor||'—'}<small>{d.vendorPhone}</small></>}</TableCell>
      <TableCell>{can?<input className="plan-input num" aria-label="Vendor unit rate" inputMode="decimal" type="number" min={0} step="0.01" value={e.quoteRate} onChange={x=>set(r.id,'quoteRate',x.target.value)}/>:(d.quoteRate===''||d.quoteRate==null?'—':d.quoteRate)}</TableCell>
-     <TableCell>{can?<input className="plan-input small" aria-label="Quotation reference" placeholder="Quote ref" value={e.quoteReference} maxLength={200} onChange={x=>set(r.id,'quoteReference',x.target.value)}/>:(d.quoteReference||'—')}</TableCell>
      <TableCell>{can?<select className="plan-input small" aria-label="Purchasing entity" value={e.entity} onChange={x=>set(r.id,'entity',x.target.value)}><option value="GROUP">Group</option><option value="BUILDERS">Builders</option></select>:(d.entity==='BUILDERS'?'Builders':'Group')}</TableCell>
      <TableCell className="nw">{money(s.vendorValue)}</TableCell>
      <TableCell className="nw"><span className={s.savingVsTarget==null?'':s.savingVsTarget<0?'neg':'pos'}>{money(s.savingVsTarget)}</span>{s.aboveTarget&&<small className="neg">Above target</small>}</TableCell>

@@ -16,6 +16,7 @@ import GMApproval from './gm-approval';
 import Vendors from './vendors';
 import { vendorsFor } from '@/lib/vendors';
 import { overdueGrns } from '@/lib/grn-overdue';
+import Process, { processStep } from './process';
 import BoqReview, { waitingOn, waitingText, decide, nextStep, AuditDecision } from './boq-review';
 import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
@@ -412,6 +413,8 @@ export default function Control({ user, testUserSwitch }: any) {
     canSeeRates = canPrivate || canPurchase,
     boqOnly = user.roles.includes('BOQ Team') && !has(user, 'GM', 'Audit', 'Purchase Manager', 'Purchase Team', 'Accounts', 'Project Manager');
   const [referenceRates, setReferenceRates] = useState<any[]>([]);
+  // The request whose waiting step is open in the "Process" window.
+  const [processing, setProcessing] = useState<any>(null);
   // Vendors & brands list (project configuration); prices only arrive for purchasing roles.
   const [vendorList, setVendorList] = useState<any[]>([]);
   // "For later": requests this person parked. Kept in this browser only.
@@ -1378,20 +1381,16 @@ export default function Control({ user, testUserSwitch }: any) {
                         </button>
                       )}
                       {tab === 'plan' ? (
-                        <button
-                          className="textbutton"
-                          onClick={() =>
-                            r.stage === 'Audit approved'
-                              ? changeTab('orders')
-                              : setSelected(r)
-                          }
-                        >
-                          {r.stage === 'Audit approved'
-                            ? 'View vendor orders'
-                            : queueOn && ['boq-qty', 'boq-rate', 'boq-release'].includes(waitingOn(user, r))
-                              ? 'Review BOQ'
-                              : 'Open request'}
-                        </button>
+                        <>
+                          <button className="textbutton" onClick={() => setSelected(r)}>
+                            View
+                          </button>
+                          {processStep(user, r) && (
+                            <button className="primary process-button" onClick={() => setProcessing(r)}>
+                              Process
+                            </button>
+                          )}
+                        </>
                       ) : tab === 'purchase' ? (
                         r.total -
                           payments
@@ -1439,25 +1438,17 @@ export default function Control({ user, testUserSwitch }: any) {
                           Record payment
                         </button>
                         </>
-                      ) : r.status === 'Pending' ? (
-                        <button
-                          className="textbutton"
-                          onClick={() =>
-                            (has(user, 'BOQ Team') && waitingOn(user, r).startsWith('boq')) ||
-                            (has(user, 'Audit') && r.stage === 'Vendors finalized')
-                              ? setSelected(r)
-                              : start('request', r)
-                          }
-                        >
-                          Review
-                        </button>
-                      ) : r.status === 'Approved' ? (
-                        <button
-                          className="textbutton"
-                          onClick={() => addPurchase(r)}
-                        >
-                          Record purchase
-                        </button>
+                      ) : tab === 'request' ? (
+                        <>
+                          <button className="textbutton" onClick={() => setSelected(r)}>
+                            View
+                          </button>
+                          {processStep(user, r) && (
+                            <button className="primary process-button" onClick={() => setProcessing(r)}>
+                              Process
+                            </button>
+                          )}
+                        </>
                       ) : null}
                     </div>
                   </TableCell>
@@ -1787,6 +1778,27 @@ export default function Control({ user, testUserSwitch }: any) {
           <TabsContent value="site-stock">
             {tab === 'site-stock' && (siteBoot ? <SiteStock boot={siteBoot} /> : <p className="muted">Loading…</p>)}
           </TabsContent>
+          <Dialog open={!!processing} onOpenChange={(o) => !o && setProcessing(null)}>
+            <DialogContent className="wide-dialog">
+              <DialogTitle>{processing?.item}</DialogTitle>
+              <DialogDescription>
+                {processing ? `Project ${processing.project} · ${processing.kind === 'request' ? 'Ad hoc' : 'Planned'} · ${processing.kind === 'plan' ? processing.boqQty : processing.qty} ${processing.unit} · delivery ${processing.due}` : ''}
+              </DialogDescription>
+              {processing && (
+                <Process
+                  key={processing.id}
+                  user={user}
+                  request={records.find((x) => x.id === processing.id) || processing}
+                  records={records}
+                  settings={settings.values}
+                  vendorList={vendorList}
+                  refresh={refresh}
+                  onDone={() => setProcessing(null)}
+                  goOrders={() => changeTab('orders')}
+                />
+              )}
+            </DialogContent>
+          </Dialog>
           <TabsContent value="vendors">
             {tab === 'vendors' && <Vendors projects={projectConfigs} onSaved={setVendorList} />}
           </TabsContent>
@@ -2278,31 +2290,6 @@ export default function Control({ user, testUserSwitch }: any) {
                       })()}
                     </div>
                   )}
-                {has(user, 'BOQ Team') &&
-                  ['plan', 'request'].includes(selected.kind) &&
-                  selected.stage === 'Submitted' &&
-                  selected.gmApproval?.state !== 'Pending' &&
-                  selected.closure?.state !== 'Closed' && (
-                    <BoqReview
-                      key={selected.id + ':' + selected.version}
-                      request={selected}
-                      records={records}
-                      settings={settings.values}
-                      refresh={refresh}
-                      onDone={() => setSelected(null)}
-                    />
-                  )}
-                {has(user, 'Audit') &&
-                  ['plan', 'request'].includes(selected.kind) &&
-                  selected.stage === 'Vendors finalized' &&
-                  selected.closure?.state !== 'Closed' && (
-                    <AuditDecision
-                      key={'a' + selected.id + ':' + selected.version}
-                      request={selected}
-                      refresh={refresh}
-                      onDone={() => setSelected(null)}
-                    />
-                  )}
                 <div className="actions">
                   {canStart(selected.kind, selected) &&
                   !boqOnly &&
@@ -2699,24 +2686,7 @@ export default function Control({ user, testUserSwitch }: any) {
                             draft={draft}
                             set={setDraft}
                           />
-                          <label className="field">
-                            <span>BOQ Preparer</span>
-                            <Choice
-                              label="BOQ Preparer"
-                              value={draft.boqOwner || ''}
-                              onChange={(v: string) =>
-                                setDraft({ ...draft, boqOwner: v })
-                              }
-                              options={[
-                                ...new Set([
-                                  ...settings.values.boqPreparers,
-                                  ...(draft.id && draft.boqOwner
-                                    ? [draft.boqOwner]
-                                    : []),
-                                ]),
-                              ].map((v) => [v, v])}
-                            />
-                          </label>
+
                           <Field
                             name="vendor"
                             label="Selected vendor"
@@ -2736,12 +2706,7 @@ export default function Control({ user, testUserSwitch }: any) {
                             draft={draft}
                             set={setDraft}
                           />
-                          <Field
-                            name="quoteReference"
-                            label="Quotation reference"
-                            draft={draft}
-                            set={setDraft}
-                          />
+                          
                         </div>
                       </details>
                     </>
