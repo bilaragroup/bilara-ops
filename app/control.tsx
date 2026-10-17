@@ -13,7 +13,7 @@ const TRADES = ['Structural', 'Electrical', 'Plumbing'];
 import { defaultSettings } from '@/lib/settings';
 import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
-import BoqReview, { waitingOn, waitingText, decide } from './boq-review';
+import BoqReview, { waitingOn, waitingText, decide, nextStep } from './boq-review';
 import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
 import PeriodPicker from './period-picker';
@@ -109,6 +109,15 @@ import {
   planMetrics,
 } from '@/lib/calculations';
 type Any = Record<string, any>;
+/** "Next: <who> — <what>" under a request's status. */
+function NextLine({ r, records }: any) {
+  const n = nextStep(r, records);
+  return (
+    <small className="next-step">
+      {n.who ? <><b>Next: {n.who}</b> — {n.what}</> : n.what}
+    </small>
+  );
+}
 function Choice({ value, onChange, options, label }: any) {
   return (
     <Select value={value} onValueChange={(v: any) => { if (v != null && v !== '') onChange(v); }}>
@@ -1267,6 +1276,7 @@ export default function Control({ user, testUserSwitch }: any) {
                             ? `Variation +${r.quantityControl.excess} ${r.unit}`
                             : `${r.kind === 'request' ? 'Ad hoc' : 'Planned'} · ${r.unit}`}
                         </small>
+                        <NextLine r={r} records={records} />
                       </>
                     ) : tab === 'payment' ? (
                       <>
@@ -1295,6 +1305,16 @@ export default function Control({ user, testUserSwitch }: any) {
                       >
                         {r.status}
                       </Tag>
+                    )}
+                    {tab === 'request' && (
+                      <>
+                        {queueOn && waitingOn(user, r) && (
+                          <span className={'tag ' + (['boq-qty', 'boq-rate'].includes(waitingOn(user, r)) ? 'red' : 'amber')}>
+                            {waitingText[waitingOn(user, r)]}
+                          </span>
+                        )}
+                        <NextLine r={r} records={records} />
+                      </>
                     )}
                   </TableCell>
                   <TableCell>
@@ -2313,6 +2333,17 @@ export default function Control({ user, testUserSwitch }: any) {
               Planned delivery: any day from {requestPolicy().earliest} (14 days from today). Anything sooner is an ad hoc request.
             </p>
           )}
+          {draft?.id && ['plan', 'request'].includes(draft.kind) && (() => {
+            const saved = records.find((x) => x.id === draft.id);
+            if (!saved) return null;
+            const n = nextStep(saved, records);
+            return (
+              <p className="alert next-step-banner">
+                Now: <b>{saved.stage === 'Submitted' ? 'With BOQ team' : saved.stage}</b>
+                {n.who ? <> · Next: <b>{n.who}</b> — {n.what}</> : <> · {n.what}</>}
+              </p>
+            );
+          })()}
           {draft?.lines ? (
             <MultiItemRequest
               records={records}

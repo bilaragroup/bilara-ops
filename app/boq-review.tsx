@@ -237,3 +237,26 @@ export default function BoqReview({ request: r, records, settings, refresh, onDo
     </section>
   );
 }
+
+/** Who acts next on a request, in plain words (shown on every request row and in the form). */
+export function nextStep(r: Any, records: Any[]): { who: string; what: string } {
+  if (r.closure?.state === 'Closed') return { who: '', what: 'Closed — nothing left to do' };
+  if (r.stage === 'Cancelled') return { who: '', what: 'Cancelled' };
+  if (r.stage === 'Rejected') return { who: '', what: 'Rejected — raise a new request if still needed' };
+  if (r.gmApproval?.state === 'Pending') return { who: 'GM', what: 'approve the extra quantity (Requests list → tick → Approve)' };
+  if (r.stage === 'Submitted')
+    return Number(r.activityBoqQty) > 0
+      ? { who: 'BOQ team', what: 'release to Purchase (Review BOQ → Save and release)' }
+      : { who: 'BOQ team', what: 'enter approved quantity and rate (Review BOQ)' };
+  if (r.stage === 'BOQ priced')
+    return { who: 'Purchase', what: r.auditReturn ? 'renegotiate and send to Audit again (Purchase plan → Edit)' : 'enter vendor and rate, send to Audit (Purchase plan → Edit)' };
+  if (r.stage === 'Vendors finalized') return { who: 'Audit', what: 'approve the vendor rate (Audit review → Approve)' };
+  const pos = records.filter((p) => p.kind === 'purchase' && p.parent === r.id && p.status !== 'Cancelled');
+  if (!pos.length) return { who: 'Purchase', what: 'create the purchase order (Purchase orders → Ready to order)' };
+  const waiting = pos.some((p) => !p.shortClose && Number(p.qty || 0) - (Array.isArray(p.receipts) ? p.receipts : []).reduce((n: number, x: Any) => n + Number(x.accepted || 0), 0) > 1e-9);
+  if (waiting) return { who: 'Site engineer', what: 'record the delivery (Receive goods (GRN))' };
+  const pays = records.filter((x) => x.kind === 'payment' && pos.some((p) => p.id === x.parent) && x.status !== 'Cancelled');
+  if (pays.some((x) => Number(x.paid || 0) < Number(x.total || 0)))
+    return { who: 'Accounts', what: 'check the bill and pay (Payment forecast → Bills to check / Record payment)' };
+  return { who: 'Purchase', what: 'close the request (open it → Completion & settlement)' };
+}
