@@ -80,7 +80,7 @@ export default function BoqReview({ request: r, records, settings, refresh, onDo
   const [custom, setCustom] = useState(!fromCard && Number.isFinite(saved) ? true : !card && !Number.isFinite(saved));
   const [rate, setRate] = useState(String(Number.isFinite(saved) ? saved : card?.originalRate ?? ''));
   const [reduction, setReduction] = useState(
-    String(r.targetDiscountPercent ?? card?.discountPercent ?? 5),
+    String([r.targetDiscountPercent, card?.discountPercent, 5].find((v) => v !== '' && v != null && Number.isFinite(Number(v)))),
   );
   const [notes, setNotes] = useState(r.notes || '');
   const [version, setVersion] = useState(r.version);

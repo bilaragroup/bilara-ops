@@ -111,7 +111,7 @@ import {
 type Any = Record<string, any>;
 function Choice({ value, onChange, options, label }: any) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={(v: any) => { if (v != null && v !== '') onChange(v); }}>
       <SelectTrigger aria-label={label} className="picker">
         <SelectValue>
           {options.find((o: any) => o[0] === value)?.[1] || label}
@@ -801,7 +801,8 @@ export default function Control({ user, testUserSwitch }: any) {
         ? Object.fromEntries(
             Object.entries(draft).filter(
               ([k, v]) =>
-                ['id', 'version', 'kind'].includes(k) ||
+                // entity is always sent: Purchase saving it is how Group/Builders gets confirmed
+                ['id', 'version', 'kind', 'entity'].includes(k) ||
                 (!same(v, saved[k]) &&
                   // form defaults the request never had
                   !(saved[k] == null && ['accountsBy', 'auditOwner', 'status', 'priority', 'category'].includes(k))),

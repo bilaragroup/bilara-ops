@@ -17,7 +17,7 @@ export function validateWorkflow(kind:string,data:any,old:any,parent?:any){
   if(Number(data.rate)!==Number(parent.quoteRate)&&!String(data.exceptionReason||'').trim())return 'Record a reason for the difference between actual and audited unit rates.';
   if(data.qty>(parent.boqQty||parent.qty))return 'PO quantity exceeds the audited requirement. Raise an ad hoc request for the extra quantity.';
   if(!validWindow(data.window))return 'The requirement needs a Thursday execution window.';
-  if(!old){data.poDate=indiaToday();if(data.poDate!==addDays(data.window,-1)&&!String(data.exceptionReason||'').trim())return 'POs are normally created on Wednesday before execution. Enter a reason for early or late creation.';}
+  if(!old){data.poDate=indiaToday();if(parent.kind!=='request'&&data.poDate!==addDays(data.window,-1)&&!String(data.exceptionReason||'').trim())return 'POs are normally created on Wednesday before execution. Enter a reason for early or late creation.';}
   else data.poDate=old.poDate;
   if(data.actualPurchaseDate&&(!dateValid(data.actualPurchaseDate)||data.actualPurchaseDate>indiaToday()))return 'Actual purchase date must be a valid date no later than today.';
   return null;

@@ -56,5 +56,20 @@ try{
  const blocked=await call('gm-approval',{ids:[tg],versions:{[tg]:r.version},decision:'Approved',note:'x',confirmed:true},BOQ);assert.equal(blocked.status,403);
  pass('an approved quantity below the request sends it to the GM; the BOQ team cannot release it');
 
+
+ // Ad hoc end to end: no rate card (custom BOQ rate) → Purchase vendor → Audit → PO on any day.
+ const AUD='aud@example.invalid';await ok('users',{email:AUD,name:'QA Audit',roles:['Audit'],projects:[],active:1,version:0});
+ const thu=(d)=>add(d,-((new Date(d+'T00:00:00Z').getUTCDay()+3)%7));
+ const ah=(await ok('records',{kind:'request',project:'902',item:'Binding wire',unit:'KG',milestone:'1',activity:'4',activityName:'Footing & column rebar',qty:25,boqQty:25,estimateRate:0,priority:'Urgent',reason:'Ran out',owner:'Jithin',itemCategory:'Materials',window:thu(today),due:add(today,2),requestBatchId:'ah'},PM)).id;
+ r=await row(ah);await ok('records',{id:ah,version:r.version,activityBoqQty:25,boqOriginalRate:80},BOQ);
+ r=await row(ah);assert.equal(r.estimateRate,76);await ok('gm-approval',{ids:[ah],versions:{[ah]:r.version},decision:'Approved',note:'ok',confirmed:true},BOQ);
+ r=await row(ah);assert.equal(r.stage,'BOQ priced');
+ await ok('records',{id:ah,version:r.version,kind:'request',entity:'GROUP',vendor:'Kerala Traders',vendorPhone:'9847012345',quoteRate:74,quoteReference:'KT-1',stage:'Vendors finalized'},PUR);
+ r=await row(ah);assert.equal(r.stage,'Vendors finalized');
+ await ok('audit-decision',{ids:[ah],versions:{[ah]:r.version},decision:'Approved',note:'ok',confirmed:true},AUD);
+ r=await row(ah);const po=await call('orders',{orderId:crypto.randomUUID(),items:[{id:ah,version:r.version,qty:25}],creditDays:7},PUR);
+ assert.equal(po.status,200,JSON.stringify(po));
+ pass('ad hoc: custom BOQ rate → Purchase sends to Audit (only changed fields + entity) → Audit → PO without a Wednesday reason');
+
  console.log(`\n${passed} BOQ review checks passed`);
 }finally{await runtime.dispose();}
