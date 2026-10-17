@@ -71,7 +71,7 @@ server {
   auth_basic "Bilara test";
   auth_basic_user_file /etc/nginx/bilara-test.htpasswd;
   location / {
-    proxy_pass http://127.0.0.1:$PORT;
+    proxy_pass http://localhost:$PORT;
     proxy_http_version 1.1;
     proxy_set_header Host localhost:$PORT;
     proxy_set_header X-Forwarded-Host \$host;
