@@ -15,7 +15,7 @@ import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
 import Vendors from './vendors';
 import { vendorsFor } from '@/lib/vendors';
-import { overdueGrns } from '@/lib/grn-overdue';
+import { overdueGrns, expectedDeliveries } from '@/lib/grn-overdue';
 import Process, { processStep } from './process';
 import BoqReview, { waitingOn, waitingText, decide, nextStep, AuditDecision } from './boq-review';
 import PurchasePlan from './purchase-plan';
@@ -565,9 +565,9 @@ export default function Control({ user, testUserSwitch }: any) {
       .then((b) => {
         setSiteBoot(b);
         // A Site Engineer's day starts on the Daily DPR.
-        if (siteRole === 'SITE_ENGINEER') setTab((t) => (t === 'weekly' ? 'site-dpr' : t));
+        // Everyone starts on the Dashboard (deliveries, waiting work), then goes to their pages.
         // A QC engineer's day starts on their booked inspections.
-        if (siteRole === 'QC') setTab((t) => (t === 'weekly' ? 'site-qc' : t));
+
       })
       .catch(() => setSiteBoot({ user: { role: siteRole }, projects: [], siteOperationProjects: [] }));
   }, [siteRole]);
@@ -676,6 +676,52 @@ export default function Control({ user, testUserSwitch }: any) {
       return [k, { count: list.length, urgent: list.filter((r) => ['Urgent', 'Critical'].includes(r.priority) || (!!r.due && r.due < today())).length }];
     }),
   ) as Record<string, { count: number; urgent: number }>;
+  // Counters on every sidebar page: what is waiting for this person there (red when urgent or late),
+  // and how many records changed since they last opened that page ("new").
+  const todayKey = today();
+  const openReq = (r: any) => ['plan', 'request'].includes(r.kind) && r.closure?.state !== 'Closed' && !['Rejected', 'Cancelled'].includes(r.stage);
+  const deliveriesDue = has(user, 'Site Engineer', 'QC', 'Project Manager') ? expectedDeliveries(records, todayKey).filter((x) => x.expected && x.expected <= todayKey) : [];
+  const unpaidDue = has(user, 'Accounts') ? payments.filter((p) => p.status !== 'Cancelled' && p.paid < p.total && p.due && p.due <= todayKey) : [];
+  const billsToCheck = has(user, 'Accounts') ? buys.filter((p) => (p.receipts || []).length > 0 && !(p.bills || []).length && p.status !== 'Cancelled') : [];
+  const badge: Record<string, { count: number; urgent: number }> = {
+    plan: waiting.plan,
+    request: waiting.request,
+    'purchase-plan': canPurchase ? { count: records.filter((r) => openReq(r) && r.stage === 'BOQ priced').length, urgent: 0 } : { count: 0, urgent: 0 },
+    audit: has(user, 'Audit') ? { count: records.filter((r) => openReq(r) && r.stage === 'Vendors finalized').length, urgent: 0 } : { count: 0, urgent: 0 },
+    orders: canPurchase ? { count: records.filter((r) => openReq(r) && r.stage === 'Audit approved' && !buys.some((p) => p.parent === r.id && p.status !== 'Cancelled')).length, urgent: 0 } : { count: 0, urgent: 0 },
+    grn: { count: deliveriesDue.length, urgent: deliveriesDue.filter((x) => x.daysLate >= 1).length },
+    payment: { count: unpaidDue.length + billsToCheck.length, urgent: unpaidDue.filter((p) => p.due < todayKey).length },
+  };
+  const tabRecords: Record<string, (r: any) => boolean> = {
+    plan: (r) => r.kind === 'plan',
+    request: (r) => r.kind === 'request',
+    'purchase-plan': (r) => ['plan', 'request'].includes(r.kind) && ['BOQ priced', 'Vendors finalized', 'Audit approved'].includes(r.stage),
+    audit: (r) => ['plan', 'request'].includes(r.kind) && r.stage === 'Vendors finalized',
+    orders: (r) => r.kind === 'purchase',
+    grn: (r) => r.kind === 'purchase',
+    payment: (r) => r.kind === 'payment',
+  };
+  const seenKey = 'bilara-seen:' + (user?.email || '');
+  const [seen, setSeen] = useState<Record<string, string>>({});
+  useEffect(() => {
+    try { setSeen(JSON.parse(localStorage.getItem(seenKey) || '{}')); } catch { setSeen({}); }
+  }, [seenKey]);
+  // Opening a page (or new data arriving while on it) marks it as seen.
+  useEffect(() => {
+    if (!records.length || !tabRecords[tab]) return;
+    const latest = records.filter(tabRecords[tab]).reduce((m, r) => (String(r.updated || '') > m ? String(r.updated || '') : m), '');
+    if (latest && latest !== seen[tab]) {
+      const next = { ...seen, [tab]: latest };
+      setSeen(next);
+      try { localStorage.setItem(seenKey, JSON.stringify(next)); } catch { /* private window */ }
+    }
+  }, [tab, records]);
+  const newCount = (t: string) => {
+    if (!tabRecords[t] || t === tab) return 0;
+    // First visit on this browser: start counting from now rather than flagging everything.
+    if (!seen[t]) return 0;
+    return records.filter((r) => tabRecords[t](r) && String(r.updated || '') > seen[t]).length;
+  };
   // Plumbing & electrical requests waiting for this person (badge on the switch).
   const peWaiting = records.filter(
     (r) =>
@@ -1308,16 +1354,18 @@ export default function Control({ user, testUserSwitch }: any) {
                         {r.closure?.state === 'Closed'
                           ? 'Closed'
                           : r.gmApproval?.state === 'Pending'
-                            ? 'Awaiting GM approval'
+                            ? 'With GM'
                             : r.stage === 'Audit approved'
                               ? 'Approved'
                               : r.stage === 'Vendors finalized'
-                                ? 'Awaiting approval'
+                                ? 'With Audit'
                                 : r.stage === 'Rejected'
                                   ? 'Rejected'
                                   : r.stage === 'Cancelled'
                                     ? 'Cancelled'
-                                    : 'Preparing'}
+                                    : r.stage === 'Submitted'
+                                      ? 'With BOQ team'
+                                      : 'With Purchase'}
                         {queueOn && waitingOn(user, r) && (
                           <span className={'tag ' + (['boq-qty', 'boq-rate'].includes(waitingOn(user, r)) ? 'red' : 'amber')}>
                             {waitingText[waitingOn(user, r)]}
@@ -1355,7 +1403,17 @@ export default function Control({ user, testUserSwitch }: any) {
                               : 'amber'
                         }
                       >
-                        {r.status}
+                        {tab === 'request' && r.status === 'Pending'
+                          ? r.gmApproval?.state === 'Pending'
+                            ? 'With GM'
+                            : r.stage === 'Submitted'
+                              ? 'With BOQ team'
+                              : r.stage === 'BOQ priced'
+                                ? 'With Purchase'
+                                : r.stage === 'Vendors finalized'
+                                  ? 'With Audit'
+                                  : r.status
+                          : r.status}
                       </Tag>
                     )}
                     {tab === 'request' && (
@@ -1523,7 +1581,7 @@ export default function Control({ user, testUserSwitch }: any) {
               ['settings', 'Settings', ShieldCheck],
             ]
               // Site Engineers and QC engineers work mostly on site pages: show them first.
-              .sort((x: any, y: any) => { const first = siteRole === 'SITE_ENGINEER' ? ['site-dpr', 'grn', 'site-stock'] : siteRole === 'QC' ? ['site-qc', 'site-dpr', 'grn', 'site-stock'] : []; const rank = (k: any) => { const i = first.indexOf(String(k)); return i < 0 ? first.length : i; }; return rank(x[0]) - rank(y[0]); })
+              .sort((x: any, y: any) => { const first = siteRole === 'SITE_ENGINEER' ? ['site-dpr', 'grn', 'site-stock'] : siteRole === 'QC' ? ['site-qc', 'site-dpr', 'grn', 'site-stock'] : []; const rank = (k: any) => { if (k === 'weekly') return -1; const i = first.indexOf(String(k)); return i < 0 ? first.length : i; }; return rank(x[0]) - rank(y[0]); })
               .filter(
                 ([v]) =>
                   (!['projects', 'users', 'settings'].includes(String(v)) ||
@@ -1544,12 +1602,17 @@ export default function Control({ user, testUserSwitch }: any) {
                 <TabsTrigger key={v} value={v}>
                   <Icon size={16} />
                   {label}
-                  {(v === 'plan' || v === 'request') && waiting[v].count > 0 && (
+                  {badge[v]?.count > 0 && (
                     <span
-                      className={'nav-count' + (waiting[v].urgent ? ' red' : '')}
-                      title={`${waiting[v].count} waiting for you${waiting[v].urgent ? ` · ${waiting[v].urgent} urgent or critical` : ''}`}
+                      className={'nav-count' + (badge[v].urgent ? ' red' : '')}
+                      title={`${badge[v].count} waiting for you${badge[v].urgent ? ` · ${badge[v].urgent} urgent or late` : ''}`}
                     >
-                      {waiting[v].count}
+                      {badge[v].count}
+                    </span>
+                  )}
+                  {newCount(v) > 0 && (
+                    <span className="nav-new" title={`${newCount(v)} new or changed since you last opened this page`}>
+                      {newCount(v)} new
                     </span>
                   )}
                 </TabsTrigger>
@@ -2280,6 +2343,16 @@ export default function Control({ user, testUserSwitch }: any) {
           ) : (
             selected && (
               <>
+                {['plan', 'request'].includes(selected.kind) && (() => {
+                  const n = nextStep(selected, records);
+                  const now = selected.closure?.state === 'Closed' ? 'Closed' : selected.gmApproval?.state === 'Pending' ? 'With GM' : selected.stage === 'Submitted' ? 'With BOQ team' : selected.stage === 'BOQ priced' ? 'With Purchase' : selected.stage === 'Vendors finalized' ? 'With Audit' : selected.stage;
+                  return (
+                    <p className="alert next-step-banner">
+                      Now: <b>{now}</b>
+                      {n.who ? <> · Next: <b>{n.who}</b> — {n.what}</> : <> · {n.what}</>}
+                    </p>
+                  );
+                })()}
                 <RecordSummary record={selected} canSeeRates={canSeeRates} />
                 {selected.kind === 'plan' &&
                   buys.some((b) => b.parent === selected.id) && (
