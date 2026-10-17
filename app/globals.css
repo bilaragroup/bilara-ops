@@ -434,3 +434,32 @@ button.danger{color:#a1312a}
 .search-footer kbd{margin-left:0}
 @media(max-width:850px){.search-trigger{min-width:0}.search-trigger kbd{display:none}}
 @media(max-width:600px){.search-trigger-label{display:none}.search-footer span:not(:last-child){display:none}.search-dialog{top:4vh!important}}
+/* ---- BOQ schedule ---- */
+.boq-project-list .cash-row>span:first-child{flex:1;min-width:0}
+.boq-head{padding:0 0 16px!important;flex-wrap:wrap}
+.boq-head .actions{flex-wrap:wrap}
+label.primary.file-button{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:7px;font-size:14px;font-weight:600}
+label.file-button.disabled{opacity:.55;pointer-events:none}
+.boq-schedule .filters{margin:12px 0 0}
+.boq-schedule .search{max-width:440px}
+.boq-clear{margin-left:auto}
+.boq-same{color:var(--muted-foreground)}
+.boq-steps ol{margin:12px 0 0 20px;list-style:decimal;line-height:1.9;font-size:14px}
+.boq-issues{margin:10px 0;padding-left:18px;list-style:disc;font-size:13px;line-height:1.8;max-height:320px;overflow:auto}
+.boq-issues b{margin-right:6px}
+.boq-diff{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
+.boq-diff-cell{border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.boq-diff-cell strong{font-size:24px}
+.boq-diff-cell span{font-size:12px;color:var(--muted-foreground)}
+.boq-diff-cell.green{background:#e4f4eb}.boq-diff-cell.amber{background:#fff5dc}.boq-diff-cell.red{background:#ffe9e7}
+.dark .boq-diff-cell.green{background:#1d4939}.dark .boq-diff-cell.amber{background:#4a3e21}.dark .boq-diff-cell.red{background:#542c31}
+.boq-schedule details summary,.wide-dialog details summary{cursor:pointer;font-weight:600;font-size:14px;margin-top:8px}
+.primary.danger{background:#b3261e!important}
+.boq-pick{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.boq-pick>span{font-size:13px;font-weight:600;color:var(--muted-foreground)}
+.boq-pick button{border:1px solid var(--border);border-radius:999px;padding:6px 12px;font-size:13px;background:var(--card,#fff);text-align:left}
+.boq-pick button.chosen{border-color:#006a60;background:#e4f4eb;color:#0b4f46;font-weight:600}
+.dark .boq-pick button.chosen{background:#1d4939;color:#a5e5bf}
+.boq-pick small{color:var(--muted-foreground);margin-left:4px}
+@media(max-width:600px){.boq-diff{grid-template-columns:repeat(2,minmax(0,1fr))}.boq-clear{margin-left:0}}
+.boq-jump{display:flex;align-items:flex-end;gap:10px;margin-top:18px;max-width:420px}.boq-jump .field{flex:1}

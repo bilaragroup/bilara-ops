@@ -46,6 +46,15 @@ import ThemeToggle from './theme-toggle';
 import Orders from './orders';
 import Bulk from './bulk';
 import GlobalSearch from './global-search';
+import BoqSchedule from './boq-schedule';
+import {
+  scheduleFor,
+  activitiesOf,
+  linesOf,
+  findLine,
+  requestedAgainst,
+  lineKey,
+} from '@/lib/boq-schedule';
 import {
   planningWindow,
   validWindow,
@@ -105,6 +114,7 @@ import {
   IndianRupee,
   ClipboardCheck,
   Boxes,
+  ListTree,
 } from 'lucide-react';
 import {
   Entry,
@@ -1021,6 +1031,7 @@ export default function Control({ user, testUserSwitch }: any) {
               ['weekly', 'Dashboard', Wallet],
               ['plan', 'Purchase requests', ClipboardList],
               ['request', 'Ad hoc requests', ClipboardList],
+              ['boq', 'BOQ schedule', ListTree],
               ['purchase-plan', 'Purchase plan', Wallet],
               ['audit', 'Audit review', ShieldCheck],
               ['orders', 'Purchase orders', PackageCheck],
@@ -1056,6 +1067,7 @@ export default function Control({ user, testUserSwitch }: any) {
                   (v !== 'payment' || has(user, 'Purchase Manager', 'Purchase Team', 'Audit', 'Accounts')) &&
                   (v !== 'vendors' || has(user, 'Purchase Manager', 'Purchase Team', 'GM', 'Audit')) &&
                   (v !== 'audit' || has(user, 'Audit', 'GM')) &&
+                  (v !== 'boq' || has(user, 'BOQ Team', 'GM', 'Project Manager', 'Audit')) &&
                   (v !== 'rate-cards' || has(user, 'BOQ Team', 'GM', 'Audit')) &&
                   (v !== 'grn' ||
                     has(user, 'Site Engineer', 'QC', 'Project Manager', 'Purchase Manager', 'Purchase Team')) &&
@@ -1650,6 +1662,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     vendors: 'Vendors & brands',
                     ...siteLabels,
                     quotes: 'Plumbing & electrical',
+                    boq: 'BOQ schedule',
                     projects: 'Projects',
                     users: 'Users & roles',
                     settings: 'Settings',
@@ -1801,7 +1814,7 @@ export default function Control({ user, testUserSwitch }: any) {
                   </label>
                 </>
               )}
-              {weekTab ? (
+              {tab === 'boq' ? null : weekTab ? (
                 <>
                   <label className="field">
                     <span>
@@ -1952,6 +1965,17 @@ export default function Control({ user, testUserSwitch }: any) {
               setWindow={setWindow}
               project={project}
               setProject={setProject}
+              refresh={refresh}
+            />
+          </TabsContent>
+          <TabsContent value="boq">
+            <BoqSchedule
+              records={records}
+              project={project}
+              setProject={setProject}
+              projects={projectConfigs}
+              settings={settings.values}
+              user={user}
               refresh={refresh}
             />
           </TabsContent>
@@ -2722,7 +2746,16 @@ export default function Control({ user, testUserSwitch }: any) {
                           options={TRADES.map((t) => [t, t])}
                         />
                       </label>
-                      {canPrivate ? (
+
+                      {draft.boqQtySource === 'BOQ schedule' ? (
+                        <div className="field">
+                          <span>Approved activity BOQ quantity</span>
+                          <p className="muted boq-qty-note">
+                            {draft.activityBoqQty} {draft.unit || ''} · from the BOQ schedule
+                            {canPrivate ? ' (change it on the BOQ schedule page)' : ''}
+                          </p>
+                        </div>
+                      ) : canPrivate ? (
                         <Field
                           name="activityBoqQty"
                           label="Approved activity BOQ quantity · BOQ Team entry"
@@ -3359,6 +3392,27 @@ export default function Control({ user, testUserSwitch }: any) {
 // on an earlier request; otherwise explains that BOQ will enter it on review.
 function BoqQuantityNote({ records = [], project, milestone, activity, item, unit, qty, compact = false }: any) {
   if (!item || !project || !activity) return null;
+  // A saved BOQ schedule is the authority when it lists this item for this activity.
+  const schedule = scheduleFor(records, String(project));
+  const scheduled = findLine(schedule, milestone, activity, item, unit);
+  if (scheduled) {
+    const used = requestedAgainst(records, String(project), scheduled);
+    const left = scheduled.qty - used;
+    return (
+      <p className={'full alert boq-qty-note ' + (qty > left ? 'amber' : 'green')}>
+        BOQ schedule: {scheduled.qty} {scheduled.unit} approved for this activity · {used} already requested ·{' '}
+        {Math.max(0, left)} left.
+        {qty > left ? ' This request is above what is left, so it will go to the GM.' : ''}
+      </p>
+    );
+  }
+  if (schedule?.lines?.length)
+    return (
+      <p className="full alert amber boq-qty-note">
+        {item} ({unit || 'no unit'}) is not in the BOQ schedule for this activity. Check the item and unit, or the BOQ
+        team will enter the approved quantity when they review it.
+      </p>
+    );
   const same = records.filter(
     (r: any) =>
       ['plan', 'request'].includes(r.kind) &&
