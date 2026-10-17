@@ -79,8 +79,8 @@ try{
  r=await row(id);assert.equal(r.activityBoqQty,120);assert.equal(r.notes,'GM note after schedule cut');
  pass('cutting the schedule below what is requested is warned about; a priced request keeps its quantity and can still be edited');
 
- const settings=(await ok('settings')),values={...settings.values,projectRates:[{id:'r1',project:'981',item:'MSand',unit:'*',originalRate:60,discountPercent:5,active:true}]};
- await ok('settings',{version:settings.version,values});
+ const settings=(await ok('settings'));
+ await ok('rate-cards',{version:settings.version,action:'save',scope:{type:'project',project:'981'},lines:[{item:'MSand',unit:'',originalRate:60,discountPercent:5}]});
  const auto=(await ok('records',{...base,item:'MSand',unit:'CFT',itemCategory:'Materials',boqQty:50,requestBatchId:'e'},PM)).id;
  r=await row(auto);assert.equal(r.stage,'BOQ priced');assert.equal(r.activityBoqQty,300);assert.equal(r.boqRate,57);
  pass('with a project rate and a schedule line, a request is priced at once with no manual BOQ step');
