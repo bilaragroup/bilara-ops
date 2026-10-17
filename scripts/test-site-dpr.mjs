@@ -17,6 +17,7 @@ async function call(route, body, email = 'qa-admin@example.invalid') {
 const ok = async (...a) => { const r = await call(...a); assert.equal(r.status, 200, JSON.stringify(r)); return r.data; };
 const site = (action, args, email) => call('site', {action, args}, email);
 const siteOk = async (action, args, email) => { const r = await site(action, args, email); assert.equal(r.status, 200, action + ' ' + JSON.stringify(r.data)); return r.data.value; };
+const checkinsFor = async (projectId, day, email) => { for (const slot of ['MORNING', 'NOON', 'EVENING']) await siteOk('saveDprCheckin', [{projectId, workDate: day, slot, clientRequestId: 'chk-' + projectId + day + slot, masons: 4, labourers: 4, progressNote: slot + ' progress', materials: [], photos: [photo(slot + '.jpg')]}], email); };
 let passed = 0; const pass = (m) => { passed++; console.log('PASS ' + m); };
 const PM = 'pm@example.invalid', SE = 'se@example.invalid', SE2 = 'se2@example.invalid', QC = 'qc@example.invalid', GM = 'gm@example.invalid';
 const today = new Date().toLocaleDateString('en-CA', {timeZone: 'Asia/Kolkata'});
@@ -77,6 +78,11 @@ try {
     materials: [{materialKey: blocks.materialKey, usedQuantity: 420}],
     activityPhotos: [{targetId: t1.targetId, photos: [photo('a1.jpg'), photo('a2.jpg')]}, {targetId: t2.targetId, photos: [photo('b1.jpg'), photo('b2.jpg')]}],
     materialPhotos: [photo('m1.jpg')]};
+  assert.match((await site('saveDprEvening', [eod], SE)).data.error, /morning, noon, evening check-in photos/);
+  assert.match((await site('saveDprCheckin', [{projectId: '960', workDate: today, slot: 'NOON', clientRequestId: 'chk-x', masons: 4, labourers: 4, progressNote: 'x', photos: []}], SE)).data.error, /live photo/);
+  await checkinsFor('960', today, SE);
+  assert.equal((await siteOk('getDprWorkspace', ['960', today], PM)).checkins.length, 3);
+  assert.match((await site('saveDprCheckin', [{projectId: '960', workDate: today, slot: 'NOON', clientRequestId: 'chk-y', masons: 4, labourers: 4, progressNote: 'x', photos: [photo('n.jpg')]}], SE)).data.error, /already saved/);
   assert.match((await site('saveDprEvening', [{...eod, activityPhotos: [{targetId: t1.targetId, photos: [photo('a1.jpg')]}, eod.activityPhotos[1]]}], SE)).data.error, /at least 2 photos/);
   assert.match((await site('saveDprEvening', [{...eod, materialPhotos: []}], SE)).data.error, /material-balance photo/);
   assert.match((await site('saveDprEvening', [{...eod, materials: [{materialKey: blocks.materialKey, usedQuantity: 900}]}], SE)).data.error, /exceeds available stock/);
@@ -97,7 +103,7 @@ try {
 
   // Photos: listed and opened by the right people only
   const list = await siteOk('listSiteFiles', [ws.daily.dayFolderUrl.split('files=')[1] ? decodeURIComponent(ws.daily.dayFolderUrl.split('files=')[1]) : ''], PM);
-  assert.equal(list.files.length, 5);
+  assert.equal(list.files.length, 8); // 4 work + 1 material + 3 check-in photos
   const file = await call('site?action=siteFile&key=' + encodeURIComponent(list.files[0].key), undefined, PM);
   assert.equal(file.status, 200); assert.ok(file.type.startsWith('image/'));
   assert.equal((await call('site?action=siteFile&key=' + encodeURIComponent(list.files[0].key), undefined, SE2)).status, 403);
@@ -142,6 +148,7 @@ try {
   let w = await siteOk('getDprWorkspace', ['961', today], SE2);
   assert.deepEqual(w.targets.map((t) => [t.activityNumber, t.activityName, t.locationRoom, t.plannedWorkerHours]),
     [['21', '6-inch cement blocks brickwork', 'GROUND FLOOR — Living and dining walls', 48], ['25', 'Lintel & sunshade concrete - GF', 'GROUND FLOOR — Front sunshade', 16]]);
+  await checkinsFor('961', today, SE2);
   w = await siteOk('saveDprEvening', [{projectId: '961', workDate: today, clientRequestId: 'e961', wastageReviewed: true, qualityAssuranceAccepted: true, materials: [],
     results: [
       {targetId: w.targets[0].targetId, actualActivityMasons: 3, actualActivityLabourers: 3, hoursPerWorker: 8, actualQuantity: 150, outputDescription: 'Ground floor living and dining walls up to sill', shortfallReason: 'Blocks arrived at 11 am, late start'},

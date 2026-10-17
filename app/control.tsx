@@ -15,6 +15,7 @@ import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
 import Vendors from './vendors';
 import { vendorsFor } from '@/lib/vendors';
+import { overdueGrns } from '@/lib/grn-overdue';
 import BoqReview, { waitingOn, waitingText, decide, nextStep, AuditDecision } from './boq-review';
 import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
@@ -1628,6 +1629,26 @@ export default function Control({ user, testUserSwitch }: any) {
               {error} <button onClick={() => refresh()}>Retry</button>
             </div>
           )}
+          {(has(user, 'Project Manager', 'GM') && !user.roles.includes('Super Admin')) && (() => {
+            // GRN not recorded after the expected delivery: day 1 → PM, day 2+ → GM as well.
+            const late = overdueGrns(records, today()).filter((x) => has(user, 'GM') ? x.level === 'GM' : true);
+            if (!late.length) return null;
+            return (
+              <details className="alert red grn-overdue">
+                <summary>
+                  {late.length} deliver{late.length === 1 ? 'y has' : 'ies have'} no GRN yet · oldest {Math.max(...late.map((x) => x.daysLate))} days late
+                  {has(user, 'GM') ? ' (escalated to you)' : ' — remind the site engineer'}
+                </summary>
+                <ul>
+                  {late.map((x) => (
+                    <li key={x.id}>
+                      Project {x.project} · {x.item} · {x.pending} {x.unit} from {x.vendor} · {x.po} · expected {x.expected} · {x.daysLate} day{x.daysLate === 1 ? '' : 's'} late
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            );
+          })()}
           {notice && (
             <div className="alert green" role="status">
               {notice}

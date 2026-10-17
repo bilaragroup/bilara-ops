@@ -2,7 +2,10 @@
 // Browser side of the site pages (converted from the QC app's Index.html helpers):
 // one call to /api/site, request ids for retry-safe saves, and photo compression.
 
-export class SiteCallError extends Error {}
+export class SiteCallError extends Error {
+  /** True when the server was not reached (no network / timeout): safe to keep and send later. */
+  offline = false;
+}
 
 /** Call a site action, as the QC app's google.script.run apiCall(action, args) did. */
 export async function siteCall<T = any>(action: string, ...args: any[]): Promise<T> {
@@ -15,14 +18,20 @@ export async function siteCall<T = any>(action: string, ...args: any[]): Promise
       body: JSON.stringify({ action, args }),
     });
   } catch (e) {
-    throw new SiteCallError(
+    const err = new SiteCallError(
       e instanceof DOMException && e.name === 'TimeoutError'
         ? 'The server took too long to answer. Check your connection, refresh and try again; nothing is saved twice.'
         : 'Could not reach the server. Check your connection and try again.',
     );
+    err.offline = true;
+    throw err;
   }
   const data: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw new SiteCallError(String(data.error || 'The action could not be completed.'));
+  if (!res.ok) {
+    const err = new SiteCallError(String(data.error || 'The action could not be completed.'));
+    err.offline = res.status >= 502 && res.status <= 504;
+    throw err;
+  }
   return data.value as T;
 }
 

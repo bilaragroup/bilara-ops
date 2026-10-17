@@ -59,6 +59,7 @@ const ACTIONS: Record<string, Handler> = {
   getDprWorkspace: (s, _a, x) => D.getDprWorkspace(s, x[0], x[1]),
   saveDprPlan: (s, _a, x) => D.saveDprPlan(s, x[0]),
   saveDprMorning: (s, _a, x) => D.saveDprMorning(s, x[0]),
+  saveDprCheckin: (s, _a, x) => D.saveDprCheckin(s, x[0]),
   saveDprEvening: (s, _a, x) => D.saveDprEvening(s, x[0]),
   uploadDeferredDprEvidence: (s, _a, x) => D.uploadDeferredDprEvidence(s, x[0]),
   scheduleDprPostCommitTrigger: (s) => D.scheduleDprPostCommitTrigger(s),
@@ -130,6 +131,7 @@ export function siteUserOf(a: Actor): SiteUser {
 const VALIDATION_MESSAGES: Record<string, string> = {
   saveDprPlan: 'The daily target could not be saved. No target was confirmed. Refresh Daily Targets and try again.',
   saveDprMorning: 'The morning site update could not be saved. Refresh the Daily DPR and try again.',
+  saveDprCheckin: 'The check-in could not be saved. It stays on this phone and will be sent again.',
   saveDprEvening: 'The end-of-day DPR could not be submitted. Your entered values remain on this page; refresh and submit again.',
 };
 

@@ -1,5 +1,6 @@
 'use client';
-import {useEffect,useMemo,useState} from 'react';
+import {Fragment,useEffect,useMemo,useState} from 'react';
+import {expectedDeliveries} from '@/lib/grn-overdue';
 import {has} from '@/lib/permissions';
 import {inPeriod,recordWindow,weekLabel,type Period} from '@/lib/weekly';
 import {acceptedQty,pendingQty,receipts} from '@/lib/grn';
@@ -170,6 +171,36 @@ function DoneCard({lines}:any){
   </tbody></table></div></section>;
 }
 
+/** Site engineer's list of deliveries due: verify the quantity on arrival and save the GRN in one step. */
+function ExpectedDeliveries({records,projects,onDone,openProject}:any){
+ const today=istToday();
+ const list=expectedDeliveries(records,today).filter((x:any)=>!projects.length||projects.includes(x.project));
+ const [f,setF]=useState<Record<string,any>>({}),[busy,setBusy]=useState(''),[err,setErr]=useState<Record<string,string>>({});
+ if(!list.length)return null;
+ const v=(x:any)=>f[x.id]||{received:String(x.pending),accepted:String(x.pending),vehicle:'',challan:'',ok:false};
+ const set=(x:any,patch:any)=>setF({...f,[x.id]:{...v(x),...patch}});
+ async function save(x:any){const d=v(x);setBusy(x.id);setErr({...err,[x.id]:''});
+  try{if(!d.vehicle.trim())throw Error('Enter the vehicle number.');if(!d.ok)throw Error('Tick that you checked the goods.');
+   const r=await siteCall('receivePurchaseOrder',{projectId:x.project,clientRequestId:requestId('GRN'),receivedDate:today,vehicleNo:d.vehicle,deliveryNoteNo:d.challan,invoiceNo:'',siteGrnBookNo:'',remarks:'',qualityDeclarationAccepted:true,
+    poLines:[{id:x.id,version:x.version,received:Number(d.received),accepted:Number(d.accepted===''?d.received:d.accepted),note:''}]});
+   onDone(`${r.lastRecordedGrn} saved: ${x.item} ${d.accepted||d.received} ${x.unit} accepted. Payment is scheduled for the accepted quantity.`);}
+  catch(e:any){const m=String(e.message||e);setErr({...err,[x.id]:/lorry|bundle|dimension|depth|measure/i.test(m)?m+' Use the full form below to measure it.':m});if(/lorry|bundle|dimension|depth|measure/i.test(m))openProject(x.project);}
+  finally{setBusy('');}}
+ const tag=(x:any)=>x.daysLate>=2?<span className="tag red">{x.daysLate} days late · GM informed</span>:x.daysLate===1?<span className="tag red">1 day late · PM informed</span>:x.expected===today?<span className="tag amber">Due today</span>:<span className="tag">Expected {x.expected||'—'}</span>;
+ return <section className="panel expected-deliveries"><div className="tablebar"><div><h2>Expected deliveries <span className="tag amber">{list.length}</span></h2><p>When the goods arrive, check the quantity, enter the vehicle number and save — the GRN is created at once. Not recorded after 1 day goes to the PM, after 2 days to the GM.</p></div></div>
+  <div className="plan-scroll"><table className="item-lines"><thead><tr><th>Delivery</th><th>Item / PO</th><th>Received</th><th>Accepted</th><th>Vehicle no. *</th><th>Challan</th><th></th></tr></thead><tbody>
+  {list.map((x:any)=>{const d=v(x);return <Fragment key={x.id}><tr>
+   <td>{tag(x)}<small className="muted"> project {x.project}</small></td>
+   <td><b>{x.item}</b><small className="muted"> {x.po} · {x.vendor} · pending {x.pending} {x.unit}</small></td>
+   <td><input className="plan-input" style={{width:90}} type="number" min={0} step="any" value={d.received} onChange={e=>set(x,{received:e.target.value,accepted:d.accepted===d.received?e.target.value:d.accepted})} aria-label={'Received, '+x.item}/></td>
+   <td><input className="plan-input" style={{width:90}} type="number" min={0} step="any" value={d.accepted} onChange={e=>set(x,{accepted:e.target.value})} aria-label={'Accepted, '+x.item}/></td>
+   <td><input className="plan-input" style={{width:120}} value={d.vehicle} onChange={e=>set(x,{vehicle:e.target.value})} aria-label={'Vehicle, '+x.item}/></td>
+   <td><input className="plan-input" style={{width:100}} value={d.challan} onChange={e=>set(x,{challan:e.target.value})} aria-label={'Challan, '+x.item}/></td>
+   <td><label className="nw"><input type="checkbox" checked={d.ok} onChange={e=>set(x,{ok:e.target.checked})}/> Checked</label> <button className="primary" disabled={busy===x.id} onClick={()=>save(x)}>{busy===x.id?'Saving…':'Verify & save GRN'}</button></td>
+  </tr>{err[x.id]&&<tr><td colSpan={7}><p className="alert red">{err[x.id]}</p></td></tr>}</Fragment>;})}
+  </tbody></table></div></section>;
+}
+
 export default function ReceiveGoods({records,project,period,refresh,user,siteProjects=[]}:any){
  const isPurchase=has(user,'Purchase Manager','Purchase Team');
  const canReceiveWithoutPo=has(user,'Site Engineer','QC','Super Admin');
@@ -191,6 +222,7 @@ export default function ReceiveGoods({records,project,period,refresh,user,sitePr
   {project==='all'&&projects.length>1&&<label className="field site-inline"><span>Project</span><select value={chosen} onChange={e=>setChosen(e.target.value)}><option value="">Select project…</option>{projects.map(p=><option key={p} value={p}>{p}</option>)}</select></label>}
   {message&&<p className="alert green" role="status">{message} <button className="textbutton" onClick={()=>setMessage('')}>Dismiss</button></p>}
   {error&&<p className="alert red" role="alert">{error}</p>}
+  {canReceiveWithoutPo&&<ExpectedDeliveries records={records} projects={siteProjects.map(String)} onDone={done} openProject={(p:string)=>setChosen(p)}/>}
   {ws&&<>
    {!groups.length&&<div className="panel empty"><h3>No deliveries waiting</h3><p>Purchase orders for project {ws.projectId} appear here once issued.</p></div>}
    {groups.map(g=><PoCard key={g[0].orderId+':'+g.map((p:any)=>p.version).join('.')} lines={g} ws={ws} user={user} onDone={done}/>)}

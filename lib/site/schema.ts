@@ -1,5 +1,24 @@
 // Generated from the QC app sheet headings. Each former tab is a D1 table named site_<tab>.
 export const SITE_TABLES:Record<string,string[]>={
+"DPR_Checkins": [
+"Checkin_ID",
+"Request_ID",
+"DPR_ID",
+"Project_ID",
+"Work_Date",
+"Slot",
+"On_Time",
+"Masons",
+"Labourers",
+"Progress_Percent",
+"Progress_Note",
+"Materials_JSON",
+"Photo_Folder",
+"Photo_Count",
+"Captured_At",
+"Created_At",
+"Created_By"
+],
 "System_Config": [
 "Key",
 "Value",

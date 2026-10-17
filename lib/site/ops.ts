@@ -7,6 +7,8 @@
 import {Site, Row, SiteError, istParts, dateKey, parseDateKey, addDaysKey, weekStartKey, weekEndKey, formatDate, storedDate, clientSafe, normaliseEmail, unique, sha256Hex, runSiteAction, isValidDateKey} from './core';
 import {isSelectableProject, activeRoleUsers} from './access';
 import {deliverEmail, htmlEscape} from './mail';
+import {decode} from '@/lib/database';
+import {overdueGrns} from '@/lib/grn-overdue';
 import {dprIsSubmitted} from './dpr';
 import {laborGroupRows, laborPayableActivities, laborRound} from './labour';
 import {officeAttendancePlan, isQcSundayOffDate, attendanceBusyStatus, activeQcUsers} from './attendance';
@@ -18,6 +20,7 @@ export const DAILY_EMAIL_SCHEDULES = [
   {id: 'dprFinal', key: 'DAILY_EMAIL_DPR_FINAL_TIME', label: 'Final DPR, attendance and management report', fallback: '08:30'},
   {id: 'grnDigest', key: 'DAILY_EMAIL_GRN_TIME', label: 'Same-day Purchase GRN digest', fallback: '19:30'},
   {id: 'materialDigest', key: 'DAILY_EMAIL_MATERIAL_TIME', label: 'Same-day detailed site-material report', fallback: '19:45'},
+  {id: 'grnEscalation', key: 'DAILY_EMAIL_GRN_ESCALATION_TIME', label: 'GRN not recorded: site engineer + PM, then GM', fallback: '09:30'},
 ];
 const DAILY_EMAIL_TIMES_PROPERTY = 'DAILY_EMAIL_TIMES_JSON_V1';
 const DPR_FINAL_DELIVERY_WINDOW_MINUTES = 60;
@@ -394,6 +397,33 @@ export async function sendDailyPurchaseGrnDigest(s: Site, workDate: string) {
   return {status: result.status, date: workDate, grnCount: grns.length};
 }
 
+/**
+ * Deliveries with no GRN after their expected date. Day 1 late: the site engineer and the PM;
+ * day 2 and later: the GM as well. One email per project.
+ */
+export async function sendGrnEscalations(s: Site, today: string) {
+  const records = ((await s.db.prepare("SELECT * FROM records WHERE kind IN ('purchase','plan','request')").all()).results || []).map(decode);
+  const late = overdueGrns(records, today);
+  if (!late.length) return {status: 'NOTHING OVERDUE', date: today};
+  const gm = await activeRoleEmails(s, ['GM']);
+  const results: any[] = [];
+  for (const project of unique(late.map((x) => x.project))) {
+    const p = await s.find('Projects', 'Project_ID', project);
+    const lines = late.filter((x) => x.project === project);
+    const toGm = lines.some((x) => x.level === 'GM');
+    const engineers = String(p?.Site_Engineer_Email || '').split(',').map(normaliseEmail).filter(Boolean);
+    const pm = normaliseEmail(p?.PM_Email || '');
+    const rows = lines.map((x) => '<tr><td>' + htmlEscape(x.po) + '</td><td>' + htmlEscape(x.item) + '</td><td>' + htmlEscape(x.vendor) + '</td><td>' + htmlEscape(x.pending) + ' ' + htmlEscape(x.unit) + '</td><td>' + htmlEscape(x.expected) + '</td><td>' + x.daysLate + ' day' + (x.daysLate === 1 ? '' : 's') + (x.level === 'GM' ? ' · escalated to GM' : '') + '</td></tr>').join('');
+    const result = await sendOperationalEmail(s, 'GRN_ESCALATION', project + ':' + today, unique([...engineers, ...(pm ? [pm] : [])]), toGm ? gm : [],
+      '[BILARA GRN NOT RECORDED] Project ' + project + ' | ' + lines.length + ' deliver' + (lines.length === 1 ? 'y' : 'ies') + (toGm ? ' | escalated to GM' : ''),
+      '<div style="font-family:Arial;color:#1f2937"><h2>GRN not recorded</h2><p>These deliveries were expected but no GRN has been saved. Site engineer: record the GRN on <b>Receive goods (GRN)</b> today. ' +
+      'After 1 day this goes to the PM, after 2 days to the GM.</p><table border="1" cellpadding="6" cellspacing="0"><tr><th>PO</th><th>Item</th><th>Vendor</th><th>Pending</th><th>Expected</th><th>Late</th></tr>' + rows + '</table></div>');
+    results.push({project, lines: lines.length, gm: toGm, status: result.status});
+  }
+  await s.audit('GRN_ESCALATION_RUN', 'DATE', today, '', 'DONE', {projects: results});
+  return {status: results.every((r) => r.status === 'SENT') ? 'SENT' : 'PARTIAL', date: today, projects: results};
+}
+
 export async function sendDailyDetailedMaterialDigest(s: Site, workDate: string) {
   if (!(await operationalEmailEnabled(s, 'ENABLE_DAILY_GRN_DIGEST'))) return {status: 'DISABLED'};
   const today = s.todayKey();
@@ -625,8 +655,9 @@ export async function runConfiguredDailyEmailDispatcher(opts: {clock?: () => Dat
   if (await open('DAILY_EMAIL_MATERIAL_TIME', '19:45')) results.materialDigest = await runSlot('MATERIAL_DIGEST', today, clock, opts.db, (s) => sendDailyDetailedMaterialDigest(s, today));
   if (await open('DAILY_EMAIL_DPR_REMINDER_TIME', '20:00')) results.dprReminder = await runSlot('DPR_REMINDER', today, clock, opts.db, (s) => sendDprTenPmReminder(s, today));
   if (await open('DAILY_EMAIL_QC_OFFICE_TIME', '19:00')) results.qcOffice = await runSlot('QC_OFFICE', today, clock, opts.db, (s) => sendNextDayQcOfficeDutyNotices(s));
+  if (await open('DAILY_EMAIL_GRN_ESCALATION_TIME', '09:30')) results.grnEscalation = await runSlot('GRN_ESCALATION', today, clock, opts.db, (s) => sendGrnEscalations(s, today));
   if (await open('DAILY_EMAIL_LOW_STOCK_TIME', '19:15')) results.lowStock = await runSlot('LOW_STOCK', today, clock, opts.db, (s) => sendDailyLowStockPlanningDigest(s));
-  const attempted = [results.dprFinal, results.grnDigest, results.materialDigest, results.dprReminder, results.qcOffice, results.lowStock].filter(Boolean);
+  const attempted = [results.grnEscalation, results.dprFinal, results.grnDigest, results.materialDigest, results.dprReminder, results.qcOffice, results.lowStock].filter(Boolean);
   const failures = attempted.filter((r: any) => { const st = String(r?.status || '').toUpperCase(); return st === 'FAILED' || st === 'PARTIAL' || st.indexOf('NO ') === 0; }).length;
   results.status = failures ? 'PARTIAL' : 'COMPLETED';
   await runSiteAction(null, 'email:dispatcher', async (s) => {
@@ -660,7 +691,8 @@ export async function saveEmailSchedule(s: Site, payload: any) {
   const admin = s.requireRole(['ADMIN']);
   const saved: Record<string, string> = {};
   for (const item of DAILY_EMAIL_SCHEDULES) {
-    const value = String(payload?.[item.id] || '').trim();
+    // A time not sent (e.g. a schedule added later) keeps its current value.
+    const value = String(payload?.[item.id] || await dailyEmailTimeValue(s, item.key, item.fallback)).trim();
     if (!validTime(value)) throw new SiteError(item.label + ' must be a valid time in HH:mm format.');
     saved[item.key] = value;
     const row = await s.find('System_Config', 'Key', item.key);

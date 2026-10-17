@@ -126,6 +126,9 @@ async function seedSite(){
    targets:[{activityCategory:'BRICKWORK',floor:'FIRST_FLOOR',workStage:'UP_TO_LINTEL',materialType:'6-inch cement blocks',workArea:'Bedrooms',measurementType:'QUANTITY',unit:'sq ft',plannedTarget:180,plannedHours:8,plannedActivityMasons:2,plannedActivityLabourers:2,pmRemarks:'Full wall height'},
     {activityCategory:'OTHER',activityNumber:39,floor:'GROUND_FLOOR',workArea:'Hall',measurementType:'PERCENTAGE',plannedTarget:100,plannedHours:8,plannedActivityMasons:2,plannedActivityLabourers:2,pmRemarks:'Conduit routes'}]},P.pm,at(add(day,-1),'17:00'));
   await site('saveDprMorning',{projectId:'902',workDate:day,masons:4,labourers:4,actualShiftCode:'8',actualVendor:'Ravi Labour'},P.se2,at(day,'09:00'));
+  // Three live check-ins (morning, noon, evening) with a photo, labour and progress.
+  for(const [slot,hm,note] of [['MORNING','09:15','Masons started on bedroom walls'],['NOON','13:10','Walls half way to lintel'],['EVENING','17:40','Day work complete, area cleaned']])
+   await site('saveDprCheckin',{projectId:'902',workDate:day,slot,clientRequestId:'demo-chk-902-'+i+slot,masons:4,labourers:4,progressNote:note,materials:[],photos:[photo('brickwork.jpg')]},P.se2,at(day,hm));
   const ws=await site('getDprWorkspace',['902',day],P.se2,at(day,'18:00'));
   const [t1,t2]=ws.targets,blocks=ws.materials.find(m=>m.materialCode==='CEMENT_BLOCK_6_INCH');
   await site('saveDprEvening',{projectId:'902',workDate:day,clientRequestId:'demo-eod-902-'+i,wastageReviewed:true,qualityAssuranceAccepted:true,

@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { milestoneLabel } from '@/lib/activities';
 import { siteCall, requestId, istToday, addDays, niceDate, fmt, titleCase, photoData } from '@/lib/site-client';
+import { sendOrKeep, useOutbox, discard, flushOutbox } from '@/lib/site-outbox';
 
 type Any = any;
 const FLOORS: [string, string][] = [
@@ -73,20 +74,25 @@ export function Txt({ label, value, onChange, required, max = 200, id, placehold
     </label>
   );
 }
+/** Live photos only: the phone camera opens; photos picked from the gallery (older than 15 minutes) are refused. */
 export function Photos({ label, files, setFiles, id, need }: Any) {
+  const [warn, setWarn] = useState('');
+  const take = (list: File[]) => {
+    const fresh = list.filter((f) => Date.now() - (f.lastModified || Date.now()) < 15 * 60 * 1000);
+    setWarn(fresh.length < list.length ? `${list.length - fresh.length} photo${list.length - fresh.length === 1 ? ' was' : 's were'} not taken just now and ${list.length - fresh.length === 1 ? 'was' : 'were'} left out. Take the photo live with the camera.` : '');
+    setFiles([...files, ...fresh]);
+  };
   return (
     <div className="site-photos">
-      <label className="field">
+      <label className="field camera-field">
         <span>{label}</span>
-        <input id={id} type="file" accept="image/*" multiple onChange={(e) => { setFiles([...files, ...Array.from(e.target.files || [])]); e.target.value = ''; }} />
+        <input id={id} type="file" accept="image/*" capture="environment" onChange={(e) => { take(Array.from(e.target.files || [])); e.target.value = ''; }} />
+        <small className="muted">Opens the camera. Take each photo now on site; gallery photos are not accepted.</small>
       </label>
-      <label className="field">
-        <span>Take a photo</span>
-        <input type="file" accept="image/*" capture="environment" onChange={(e) => { setFiles([...files, ...Array.from(e.target.files || [])]); e.target.value = ''; }} />
-      </label>
+      {warn && <p className="full alert amber">{warn}</p>}
       <p className={'full muted' + (need > 0 ? ' neg' : '')}>
-        {files.length ? `${files.length} photo${files.length === 1 ? '' : 's'} ready to upload. ` : 'No new photos selected. '}
-        {need > 0 ? `Add at least ${need} more.` : ''}
+        {files.length ? `${files.length} photo${files.length === 1 ? '' : 's'} ready to upload. ` : 'No new photos taken. '}
+        {need > 0 ? `Take at least ${need} more.` : ''}
         {files.length > 0 && <button type="button" className="textbutton" onClick={() => setFiles([])}>Clear</button>}
       </p>
     </div>
@@ -268,6 +274,114 @@ function MorningForm({ ws, onSaved }: Any) {
       {error && <p className="alert red" role="alert">{error}</p>}
       <button className="primary" disabled={busy}>{busy ? 'Saving…' : d.morningUpdatedAt ? 'Update morning manpower' : 'Save morning manpower'}</button>
     </form>
+  );
+}
+
+// ---------------- Site Engineer: three photo check-ins a day ----------------
+
+const nowSlot = () => {
+  const t = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+  return t < '12:00' ? 'MORNING' : t < '16:00' ? 'NOON' : 'EVENING';
+};
+function CheckinForm({ ws, slot, onSaved, onQueued }: Any) {
+  const [masons, setMasons] = useState(''), [labourers, setLabourers] = useState('');
+  const [percent, setPercent] = useState(''), [note, setNote] = useState('');
+  const [avail, setAvail] = useState<Record<string, string>>(() => Object.fromEntries((ws.materials || []).map((m: Any) => [m.materialKey, String(m.balanceQuantity ?? '')])));
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  async function save(e: Any) {
+    e.preventDefault(); setBusy(true); setError('');
+    try {
+      if (!files.length) throw new Error('Take at least one live photo.');
+      const payload = {
+        projectId: ws.project.projectId, workDate: ws.workDate, slot: slot.slot, clientRequestId: requestId('CHK'),
+        masons, labourers, progressPercent: percent, progressNote: note,
+        materials: (ws.materials || []).filter((m: Any) => avail[m.materialKey] !== '' && (Number(avail[m.materialKey]) > 0 || Number(m.balanceQuantity) > 0)).map((m: Any) => ({ materialKey: m.materialKey, materialName: m.materialName, unit: m.unit, available: avail[m.materialKey] })),
+        photos: await photoData(files), capturedAt: new Date(Math.max(...files.map((f) => f.lastModified || Date.now()))).toISOString(),
+      };
+      const r = await sendOrKeep('saveDprCheckin', payload, `${slot.label} check-in · ${ws.project.projectId} · ${ws.workDate}`);
+      if (r.sent) onSaved(r.value, `${slot.label} check-in saved.`);
+      else onQueued(`${slot.label} check-in is saved on this phone. It will be sent automatically when the network is back.`);
+    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <form className="checkin-form" onSubmit={save}>
+      <div className="formgrid site-grid site-grid-4">
+        <Num label="Masons on site" required step={1} value={masons} onChange={setMasons} />
+        <Num label="Labourers on site" required step={1} value={labourers} onChange={setLabourers} />
+        <Num label="Progress % (optional)" step={1} max={100} value={percent} onChange={setPercent} />
+        <div className="full"><Txt label="Progress so far" required area max={1000} placeholder="e.g. GF brickwork east wall up to lintel" value={note} onChange={setNote} /></div>
+      </div>
+      {(ws.materials || []).length > 0 && (
+        <details className="checkin-materials">
+          <summary>Material available now ({(ws.materials || []).length} items · prefilled from site stock)</summary>
+          <div className="formgrid site-grid site-grid-4">
+            {(ws.materials || []).map((m: Any) => (
+              <Num key={m.materialKey} label={`${m.materialName}${m.variant ? ' ' + m.variant : ''} (${m.unit})`} value={avail[m.materialKey] ?? ''} onChange={(v: string) => setAvail({ ...avail, [m.materialKey]: v })} />
+            ))}
+          </div>
+        </details>
+      )}
+      <Photos label="Live photos of the work *" id={'checkin-' + slot.slot} files={files} setFiles={setFiles} need={files.length ? 0 : 1} />
+      {error && <p className="alert red" role="alert">{error}</p>}
+      <button className="primary" disabled={busy}>{busy ? 'Saving…' : `Save ${slot.label.toLowerCase()} check-in`}</button>
+    </form>
+  );
+}
+function Checkins({ ws, engineer, onSaved, onQueued }: Any) {
+  const slots: Any[] = ws.checkinSlots || [];
+  const done: Any[] = ws.checkins || [];
+  const live = engineer && ws.workDate === ws.today && ws.daily && !ws.daily.isSubmitted && !ws.daily.isSiteOff && !ws.daily.isNotStarted;
+  const [openSlot, setOpenSlot] = useState(nowSlot());
+  if (!slots.length || !ws.daily || ws.daily.isSiteOff || ws.daily.isNotStarted) return null;
+  return (
+    <section className="panel checkins">
+      <h2>Check-ins · {done.length} of {slots.length}</h2>
+      <p className="muted">Three times a day: live photos of the work, labour on site and material available. All three are needed before the end-of-day DPR.</p>
+      <div className="checkin-slots">
+        {slots.map((slot: Any) => {
+          const c = done.find((x: Any) => x.slot === slot.slot);
+          return (
+            <div key={slot.slot} className={'checkin-slot' + (c ? ' done' : '')}>
+              <div className="checkin-head">
+                <b>{slot.label}</b><small>{slot.from}–{slot.to}</small>
+                {c ? <span className={'tag ' + (c.onTime ? 'green' : 'amber')}>{c.onTime ? 'Done' : 'Done late'} · {new Date(c.capturedAt || c.createdAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}</span>
+                  : <span className="tag red">Not yet</span>}
+              </div>
+              {c && (
+                <p className="checkin-summary">
+                  {c.masons} masons · {c.labourers} labourers{c.progressPercent !== '' ? ` · ${c.progressPercent}%` : ''} · {c.photoCount} photo{c.photoCount === 1 ? '' : 's'}
+                  {c.photoFolderUrl && <> · <a href={c.photoFolderUrl} target="_blank" rel="noreferrer">View photos ↗</a></>}
+                  <br /><span className="muted">{c.progressNote}</span>
+                  {c.materials?.length > 0 && <><br /><span className="muted">Available: {c.materials.filter((m: Any) => Number(m.available) > 0).map((m: Any) => `${m.materialName} ${m.available} ${m.unit}`).join(' · ') || 'nothing in stock'}</span></>}
+                </p>
+              )}
+              {!c && live && (openSlot === slot.slot
+                ? <CheckinForm ws={ws} slot={slot} onSaved={onSaved} onQueued={onQueued} />
+                : <button type="button" className="secondary" onClick={() => setOpenSlot(slot.slot)}>Take {slot.label.toLowerCase()} check-in</button>)}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+function Outbox({ onSent }: Any) {
+  const items = useOutbox(onSent);
+  if (!items.length) return null;
+  return (
+    <section className="panel outbox">
+      <b>{items.length} save{items.length === 1 ? '' : 's'} waiting on this phone</b>
+      <small className="muted"> Sent automatically when the network is back (photos included).</small>
+      {items.map((i) => (
+        <p key={i.id} className={'alert ' + (i.failed ? 'red' : 'amber')}>
+          {i.label} · {new Date(i.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+          {i.failed ? ` — refused: ${i.error}` : ''}
+          {i.failed && <button className="textbutton" onClick={() => discard(i.id)}>Remove</button>}
+        </p>
+      ))}
+      <button className="secondary" onClick={() => flushOutbox(onSent)}>Send now</button>
+    </section>
   );
 }
 
@@ -569,6 +683,7 @@ export default function SiteDpr({ boot }: Any) {
         {upload.state === 'failed' && job && <button className="secondary" onClick={() => runUpload(job)}>Retry photo upload</button>}
         {upload.state !== 'busy' && <button className="textbutton" onClick={() => setUpload(null)}>Dismiss</button>}
       </p>}
+      {engineer && <Outbox onSent={() => projectId && open(projectId, workDate)} />}
       {message && <p className="alert green" role="status">{message} <button className="textbutton" onClick={() => setMessage('')}>Dismiss</button></p>}
       {error && <p className="alert red" role="alert">{error}</p>}
       {ws && <>
@@ -584,6 +699,7 @@ export default function SiteDpr({ boot }: Any) {
         {d && !editingPlan && <PlanSummary ws={ws} />}
         {p.canEditPlan && d && !editingPlan && <button className="secondary site-edit" onClick={() => setEditingPlan(true)}>Edit target</button>}
         {p.canEditMorning && <MorningForm ws={ws} onSaved={saved} />}
+        <Checkins ws={ws} engineer={engineer} onSaved={saved} onQueued={(t: string) => setMessage(t)} />
         {p.canEditEvening && d?.morningUpdatedAt && <EveningForm key={d.lastEodRequestId + d.resubmitStatus} ws={ws} onSubmitted={() => setMessage('DPR submitted and locked. Stock is updated.')} startUpload={runUpload} />}
         {p.canEditEvening && d && !d.morningUpdatedAt && <p className="alert">Save the morning manpower first; the end-of-day form opens after that.</p>}
         {d?.isSubmitted && d.evidenceUploadStatus && d.evidenceUploadStatus !== 'COMPLETE' && !job && (

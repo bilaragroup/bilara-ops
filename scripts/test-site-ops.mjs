@@ -43,6 +43,7 @@ try {
       {activityCategory: 'OTHER', activityNumber: 25, floor: 'GROUND_FLOOR', workArea: 'Front', measurementType: 'PERCENTAGE', plannedTarget: 100, plannedHours: 8, plannedActivityMasons: 2, plannedActivityLabourers: 2, pmRemarks: 'Show shuttering'}]}], PM);
   clock = at(WED, '09:00');
   await siteOk('saveDprMorning', [{projectId: '960', workDate: WED, masons: 4, labourers: 4, actualShiftCode: '8', actualVendor: 'Ravi labour'}], SE);
+  for (const [slot, hm] of [['MORNING', '09:30'], ['NOON', '13:00'], ['EVENING', '17:30']]) { clock = at(WED, hm); await siteOk('saveDprCheckin', [{projectId: '960', workDate: WED, slot, clientRequestId: 'chk-' + slot, masons: 4, labourers: 4, progressNote: 'ok', photos: [{name: slot + '.jpg', mimeType: 'image/jpeg', data: 'data:image/jpeg;base64,' + Buffer.from('jpeg-' + slot).toString('base64')}]}], SE); }
   clock = at(WED, '18:30');
   let ws = await siteOk('getDprWorkspace', ['960', WED], SE);
   const [t1, t2] = ws.targets, blocks = ws.materials.find((m) => m.materialCode === 'CEMENT_BLOCK_6_INCH');

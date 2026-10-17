@@ -229,6 +229,7 @@ export async function getDprWorkspace(s: Site, projectId: any, workDate: any) {
       overtimeHoursPerWorker: n(row.Overtime_Hours_Per_Worker), overtimeWorkerHours: n(row.Overtime_Worker_Hours), cappedAchievementPercent: n(row.Capped_Achievement_Percent),
       reducedHoursReason: String(row.Reduced_Hours_Reason || ''), outputDescription: String(row.Output_Description || ''), shortfallReason: String(row.Shortfall_Reason || ''),
     })),
+    checkins: await dprCheckins(s, dprId), checkinSlots: DPR_CHECKIN_SLOTS,
     materials, rates, dailyWastage: await dprDailyWastage(s, project.Project_ID, resolved.key),
     wasteMaterials: MATERIAL_MAJOR_DEFINITIONS.filter((item) => !item.ginOnly).map((item) => ({code: item.code, name: item.name, category: item.category, stockUnit: item.stockUnit, inputUnits: item.inputUnits, variants: item.variants || []})),
     wasteMiscUnits: MATERIAL_MISC_UNITS.slice(), activityCatalogue: DPR_ACTIVITY_CATALOGUE.map((i) => ({...i})), siteOffCategories: DPR_SITE_OFF_CATEGORIES,
@@ -533,6 +534,70 @@ export async function uploadDeferredDprEvidence(s: Site, payload: any) {
 
 // ---------- Site Engineer: end of day ----------
 
+// ---------- three photo check-ins a day ----------
+
+/** Morning, noon and evening: live photos of progress, labour on site and material available. */
+export const DPR_CHECKIN_SLOTS = [
+  {slot: 'MORNING', label: 'Morning', from: '06:00', to: '11:59'},
+  {slot: 'NOON', label: 'Noon', from: '12:00', to: '15:59'},
+  {slot: 'EVENING', label: 'Evening', from: '16:00', to: '23:59'},
+];
+const istTime = (d: Date) => d.toLocaleTimeString('en-GB', {timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false});
+export async function dprCheckins(s: Site, dprId: string) {
+  return dprId ? (await s.filter('DPR_Checkins', (r) => String(r.DPR_ID || '') === dprId)).map((r) => ({
+    checkinId: String(r.Checkin_ID || ''), slot: String(r.Slot || ''), onTime: String(r.On_Time || '') === 'YES', masons: Number(r.Masons || 0), labourers: Number(r.Labourers || 0),
+    progressPercent: r.Progress_Percent === '' ? '' : Number(r.Progress_Percent), progressNote: String(r.Progress_Note || ''),
+    materials: (() => { try { return JSON.parse(String(r.Materials_JSON || '[]')); } catch { return []; } })(),
+    photoCount: Number(r.Photo_Count || 0), photoFolderUrl: folderUrl(String(r.Photo_Folder || '')), capturedAt: String(r.Captured_At || ''), createdAt: String(r.Created_At || ''), createdBy: String(r.Created_By || ''),
+  })) : [];
+}
+export async function saveDprCheckin(s: Site, payload: any) {
+  const user = s.requireRole(['SITE_ENGINEER', 'QC']);
+  if (!payload || !payload.projectId) throw new SiteError('Select a project.');
+  await assertSiteOperationsProjectAccess(s, user, payload.projectId);
+  const workDate = dateKey(payload.workDate);
+  if (!isValidDateKey(workDate) || workDate !== s.todayKey()) throw new SiteError('Check-in photos are taken live on the work day.');
+  const slot = DPR_CHECKIN_SLOTS.find((x) => x.slot === String(payload.slot || '').toUpperCase());
+  if (!slot) throw new SiteError('Choose morning, noon or evening.');
+  const requestId = String(payload.clientRequestId || '').trim();
+  if (!requestId || requestId.length > 120) throw new SiteError('Invalid check-in. Reload and retry.');
+  const resolved = await dprProjectDate(s, payload.projectId, workDate);
+  if (!resolved.daily) throw new SiteError('The Project Manager has not set a target for this project and date.');
+  if (dprIsEntryExempt(resolved.daily)) throw new SiteError('This date is marked Site Off / Not Started. No check-in is needed.');
+  const dprId = String(resolved.daily.DPR_ID);
+  const existing = await s.filter('DPR_Checkins', (r) => String(r.DPR_ID || '') === dprId && String(r.Slot || '') === slot.slot);
+  if (existing.some((r) => String(r.Request_ID || '') === requestId)) return getDprWorkspace(s, payload.projectId, workDate);
+  if (existing.length) throw new SiteError('The ' + slot.label.toLowerCase() + ' check-in is already saved for today.');
+  const masons = dprInteger(payload.masons, 'Masons on site');
+  const labourers = dprInteger(payload.labourers, 'Labourers on site');
+  const progressNote = dprText(payload.progressNote, 'Progress', 1000, true);
+  const progressPercent = payload.progressPercent === '' || payload.progressPercent == null ? '' : dprPercent(payload.progressPercent, 'Progress %');
+  const materials = (Array.isArray(payload.materials) ? payload.materials : []).slice(0, 60).map((m: any, i: number) => ({
+    materialKey: String(m.materialKey || '').slice(0, 200), materialName: String(m.materialName || '').slice(0, 200), unit: String(m.unit || '').slice(0, 30),
+    available: dprNumber(m.available, 'Available quantity ' + (i + 1)),
+  }));
+  const photos: any[] = Array.isArray(payload.photos) ? payload.photos : [];
+  if (!photos.length) throw new SiteError('Take at least one live photo for the ' + slot.label.toLowerCase() + ' check-in.');
+  if (photos.length > 8) throw new SiteError('Up to 8 photos per check-in.');
+  const decoded: DecodedFile[] = photos.map((ph, i) => decodeDataUrl(ph, slot.label + ' photo ' + (i + 1), ALLOWED_PHOTO_MIME, DPR_PHOTO_RULES.maxBytesPerFile));
+  const project = await s.find('Projects', 'Project_ID', payload.projectId);
+  if (!project) throw new SiteError('Project not found.');
+  const folder = dayPrefix(project, workDate) + '/00 - Check-ins/' + slot.label;
+  const created = await storeFiles(folder, decoded, slot.slot, s.now());
+  s.onError.push(() => removeFiles(created));
+  // On time when taken inside its window (the phone's capture time if sent, else now).
+  const captured = dateKey(payload.capturedAt) === workDate ? new Date(String(payload.capturedAt)) : s.now();
+  const t = istTime(isNaN(captured.getTime()) ? s.now() : captured);
+  await s.append('DPR_Checkins', {
+    Checkin_ID: shortId('CHK-'), Request_ID: requestId, DPR_ID: dprId, Project_ID: String(project.Project_ID), Work_Date: workDate, Slot: slot.slot,
+    On_Time: t >= slot.from && t <= slot.to ? 'YES' : 'NO', Masons: masons, Labourers: labourers, Progress_Percent: progressPercent, Progress_Note: progressNote,
+    Materials_JSON: JSON.stringify(materials), Photo_Folder: folder, Photo_Count: decoded.length, Captured_At: isNaN(captured.getTime()) ? '' : captured.toISOString(),
+    Created_At: s.now(), Created_By: user.email,
+  });
+  await s.audit('DPR_CHECKIN_SAVED', 'DPR', dprId, '', slot.slot, {projectId: project.Project_ID, workDate, masons, labourers, photos: decoded.length, onTime: t});
+  return getDprWorkspace(s, payload.projectId, workDate);
+}
+
 export async function saveDprEvening(s: Site, payload: any) {
   const user = s.requireRole(['SITE_ENGINEER', 'QC']);
   if (!payload || !payload.projectId) throw new SiteError('Select a project.');
@@ -543,6 +608,11 @@ export async function saveDprEvening(s: Site, payload: any) {
   if (!resolved.daily) throw new SiteError('The Project Manager has not set a target for this project and date.');
   if (dprIsEntryExempt(resolved.daily)) throw new SiteError('This date is marked ' + (dprIsNotStarted(resolved.daily) ? 'Not Started' : 'Site Off') + ' by the Project Manager. A DPR is not required.');
   if (!resolved.daily.Morning_Updated_At) throw new SiteError('Save the morning manpower update before entering end-of-day progress.');
+  {
+    const done = (await dprCheckins(s, String(resolved.daily.DPR_ID))).map((c) => c.slot);
+    const missing = DPR_CHECKIN_SLOTS.filter((x) => !done.includes(x.slot)).map((x) => x.label.toLowerCase());
+    if (missing.length) throw new SiteError('Take the ' + missing.join(', ') + ' check-in photos before submitting the end-of-day DPR.');
+  }
   const requestId = String(payload.clientRequestId || '').trim();
   if (!requestId || requestId.length > 120) throw new SiteError('Invalid end-of-day request. Reload the DPR page and retry.');
   if (payload.wastageReviewed !== true) throw new SiteError('Review daily material wastage and confirm the declaration before submitting the DPR.');
