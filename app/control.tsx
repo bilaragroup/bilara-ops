@@ -388,6 +388,17 @@ export default function Control({ user, testUserSwitch }: any) {
     canSeeRates = canPrivate || canPurchase,
     boqOnly = user.roles.includes('BOQ Team') && !has(user, 'GM', 'Audit', 'Purchase Manager', 'Purchase Team', 'Accounts', 'Project Manager');
   const [referenceRates, setReferenceRates] = useState<any[]>([]);
+  // "For later": requests this person parked. Kept in this browser only.
+  const laterKey = 'bilara-later:' + (user?.email || '');
+  const [later, setLater] = useState<string[]>([]);
+  useEffect(() => {
+    try { setLater(JSON.parse(localStorage.getItem(laterKey) || '[]')); } catch { setLater([]); }
+  }, [laterKey]);
+  const toggleLater = (id: string) => {
+    const next = later.includes(id) ? later.filter((x) => x !== id) : [...later, id];
+    setLater(next);
+    try { localStorage.setItem(laterKey, JSON.stringify(next)); } catch { /* private window */ }
+  };
   // Rows the BOQ team or GM ticked in the Requests table to release / approve together.
   const [picked, setPicked] = useState<string[]>([]),
     [queueNote, setQueueNote] = useState(''),
@@ -429,7 +440,7 @@ export default function Control({ user, testUserSwitch }: any) {
     // Purchase requests page: materials (by quantity) or plumbing & electrical (by quote).
     [reqView, setReqView] = useState<'materials' | 'pe'>('materials'),
     // Requests list: show active (default), closed, or all.
-    [statusFilter, setStatusFilter] = useState<'active' | 'closed' | 'all'>('active'),
+    [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'later' | 'all'>('pending'),
     [sortBy, setSortBy] = useState<'recent' | 'due' | 'week'>('recent'),
     [offset, setOffset] = useState(0),
     [loading, setLoading] = useState(true),
@@ -602,11 +613,18 @@ export default function Control({ user, testUserSwitch }: any) {
               )
             : 0,
     );
-  const statusCounts = {
-    active: unfiltered.filter((r) => !isClosed(r)).length,
-    closed: unfiltered.filter(isClosed).length,
-    all: unfiltered.length,
-  };
+  // Request lists: Pending (still moving), Approved (Audit approved onward, incl. closed),
+  // Rejected (rejected or cancelled), For later (pending ones this person parked), All.
+  const bucket = (r: any) =>
+    r.stage === 'Rejected' || r.stage === 'Cancelled'
+      ? 'rejected'
+      : r.stage === 'Audit approved' || r.closure?.state === 'Closed'
+        ? 'approved'
+        : later.includes(r.id)
+          ? 'later'
+          : 'pending';
+  const statusCounts: Record<string, number> = { pending: 0, approved: 0, rejected: 0, later: 0, all: unfiltered.length };
+  unfiltered.forEach((r) => statusCounts[bucket(r)]++);
   // Requests waiting for this person's action (sidebar counters). Red when any of them is
   // Urgent or Critical, or its need-by date has passed.
   const waitingFor = (r: any) =>
@@ -637,9 +655,7 @@ export default function Control({ user, testUserSwitch }: any) {
           has(user, 'Purchase Manager', 'Purchase Team'))),
   ).length;
   const active = statusTab
-    ? unfiltered.filter(
-        (r) => statusFilter === 'all' || (statusFilter === 'closed') === isClosed(r),
-      )
+    ? unfiltered.filter((r) => statusFilter === 'all' || bucket(r) === statusFilter)
     : unfiltered;
   const metrics = useMemo(() => {
     const ps = plans.filter(matches),
@@ -1119,8 +1135,10 @@ export default function Control({ user, testUserSwitch }: any) {
               <div className="view-switch status-filter" role="group" aria-label="Show requests">
                 {(
                   [
-                    ['active', 'Active'],
-                    ['closed', 'Closed'],
+                    ['pending', 'Pending'],
+                    ['approved', 'Approved'],
+                    ['rejected', 'Rejected'],
+                    ['later', 'For later'],
                     ['all', 'All'],
                   ] as const
                 ).map(([k, label]) => (
@@ -1319,6 +1337,15 @@ export default function Control({ user, testUserSwitch }: any) {
                   </TableCell>
                   <TableCell>
                     <div className="actions">
+                      {statusTab && ['pending', 'later'].includes(bucket(r)) && (
+                        <button
+                          className="textbutton later-button"
+                          title={bucket(r) === 'later' ? 'Move back to Pending' : 'Park this request under For later'}
+                          onClick={() => toggleLater(r.id)}
+                        >
+                          {bucket(r) === 'later' ? 'Back to pending' : 'Later'}
+                        </button>
+                      )}
                       {tab === 'plan' ? (
                         <button
                           className="textbutton"
