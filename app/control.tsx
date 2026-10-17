@@ -45,6 +45,7 @@ import Dashboard from './dashboard';
 import ThemeToggle from './theme-toggle';
 import Orders from './orders';
 import Bulk from './bulk';
+import GlobalSearch from './global-search';
 import {
   planningWindow,
   validWindow,
@@ -466,6 +467,8 @@ export default function Control({ user, testUserSwitch }: any) {
     [activityFilter, setActivityFilter] = useState(''),
     [query, setQuery] = useState(''),
     [carryOpen, setCarryOpen] = useState(false),
+    // Global search hands Purchase orders a search text (e.g. a vendor name).
+    [ordersSeed, setOrdersSeed] = useState<{ text: string } | null>(null),
     // Purchase requests page: materials (by quantity) or plumbing & electrical (by quote).
     [reqView, setReqView] = useState<'materials' | 'pe'>('materials'),
     // Requests list: show active (default), closed, or all.
@@ -1013,6 +1016,52 @@ export default function Control({ user, testUserSwitch }: any) {
           : p,
       ]),
   ];
+  // Sidebar pages this user can open; global search offers the same list.
+  const navItems: [string, string, any][] = [
+              ['weekly', 'Dashboard', Wallet],
+              ['plan', 'Purchase requests', ClipboardList],
+              ['request', 'Ad hoc requests', ClipboardList],
+              ['purchase-plan', 'Purchase plan', Wallet],
+              ['audit', 'Audit review', ShieldCheck],
+              ['orders', 'Purchase orders', PackageCheck],
+              ['site-dpr', siteLabels['site-dpr'], HardHat],
+              ['grn', 'Receive goods (GRN)', PackageCheck],
+              ['site-stock', 'Site stock', Boxes],
+              ['site-quality', siteLabels['site-quality'], ClipboardCheck],
+              ['site-qc', siteLabels['site-qc'], ClipboardCheck],
+              ['site-dashboard', siteLabels['site-dashboard'], Gauge],
+              ['site-labour', siteLabels['site-labour'], UsersIcon],
+              ['site-compliance', 'DPR compliance', CalendarCheck],
+              ['site-attendance', 'QC office attendance', CalendarCheck],
+              ['site-purchase', 'Site purchase', PackageCheck],
+              ['site-emails', 'Site email times', Mail],
+              ['payment', 'Payment forecast', Wallet],
+              ['documents', 'Documents', ClipboardList],
+              ['backup', 'Backups', Download],
+              ['rate-cards', 'Rate cards', IndianRupee],
+              ['vendors', 'Vendors & brands', Building2],
+              ['projects', 'Projects', Building2],
+              ['users', 'Users & roles', UserCog],
+              ['settings', 'Settings', ShieldCheck],
+            ]
+              // Site Engineers and QC engineers work mostly on site pages: show them first.
+              .sort((x: any, y: any) => { const first = siteRole === 'SITE_ENGINEER' ? ['site-dpr', 'grn', 'site-stock'] : siteRole === 'QC' ? ['site-qc', 'site-dpr', 'grn', 'site-stock'] : []; const rank = (k: any) => { if (k === 'weekly') return -1; const i = first.indexOf(String(k)); return i < 0 ? first.length : i; }; return rank(x[0]) - rank(y[0]); })
+              .filter(
+                ([v]) =>
+                  (!['projects', 'users', 'settings'].includes(String(v)) ||
+                    has(user)) &&
+                  // BOQ prices requests on Purchase requests; vendor rates and payments are for Purchase, Audit, GM and Accounts.
+                  (v !== 'purchase-plan' || canPurchase || has(user, 'GM', 'Audit')) &&
+                  // Payment forecast: Purchase, Audit and Accounts only.
+                  (v !== 'payment' || has(user, 'Purchase Manager', 'Purchase Team', 'Audit', 'Accounts')) &&
+                  (v !== 'vendors' || has(user, 'Purchase Manager', 'Purchase Team', 'GM', 'Audit')) &&
+                  (v !== 'audit' || has(user, 'Audit', 'GM')) &&
+                  (v !== 'rate-cards' || has(user, 'BOQ Team', 'GM', 'Audit')) &&
+                  (v !== 'grn' ||
+                    has(user, 'Site Engineer', 'QC', 'Project Manager', 'Purchase Manager', 'Purchase Team')) &&
+                  (!siteTabs.includes(String(v)) || (siteTabRoles[String(v)] || []).includes(siteRole)) &&
+                  (!siteOnly || siteTabs.includes(String(v))),
+              ) as any;
   function sourceRows() {
     return (
       <>
@@ -1553,51 +1602,7 @@ export default function Control({ user, testUserSwitch }: any) {
           </div>
           <p className="nav-caption">WORKSPACE</p>
           <TabsList className="nav">
-            {[
-              ['weekly', 'Dashboard', Wallet],
-              ['plan', 'Purchase requests', ClipboardList],
-              ['request', 'Ad hoc requests', ClipboardList],
-              ['purchase-plan', 'Purchase plan', Wallet],
-              ['audit', 'Audit review', ShieldCheck],
-              ['orders', 'Purchase orders', PackageCheck],
-              ['site-dpr', siteLabels['site-dpr'], HardHat],
-              ['grn', 'Receive goods (GRN)', PackageCheck],
-              ['site-stock', 'Site stock', Boxes],
-              ['site-quality', siteLabels['site-quality'], ClipboardCheck],
-              ['site-qc', siteLabels['site-qc'], ClipboardCheck],
-              ['site-dashboard', siteLabels['site-dashboard'], Gauge],
-              ['site-labour', siteLabels['site-labour'], UsersIcon],
-              ['site-compliance', 'DPR compliance', CalendarCheck],
-              ['site-attendance', 'QC office attendance', CalendarCheck],
-              ['site-purchase', 'Site purchase', PackageCheck],
-              ['site-emails', 'Site email times', Mail],
-              ['payment', 'Payment forecast', Wallet],
-              ['documents', 'Documents', ClipboardList],
-              ['backup', 'Backups', Download],
-              ['rate-cards', 'Rate cards', IndianRupee],
-              ['vendors', 'Vendors & brands', Building2],
-              ['projects', 'Projects', Building2],
-              ['users', 'Users & roles', UserCog],
-              ['settings', 'Settings', ShieldCheck],
-            ]
-              // Site Engineers and QC engineers work mostly on site pages: show them first.
-              .sort((x: any, y: any) => { const first = siteRole === 'SITE_ENGINEER' ? ['site-dpr', 'grn', 'site-stock'] : siteRole === 'QC' ? ['site-qc', 'site-dpr', 'grn', 'site-stock'] : []; const rank = (k: any) => { if (k === 'weekly') return -1; const i = first.indexOf(String(k)); return i < 0 ? first.length : i; }; return rank(x[0]) - rank(y[0]); })
-              .filter(
-                ([v]) =>
-                  (!['projects', 'users', 'settings'].includes(String(v)) ||
-                    has(user)) &&
-                  // BOQ prices requests on Purchase requests; vendor rates and payments are for Purchase, Audit, GM and Accounts.
-                  (v !== 'purchase-plan' || canPurchase || has(user, 'GM', 'Audit')) &&
-                  // Payment forecast: Purchase, Audit and Accounts only.
-                  (v !== 'payment' || has(user, 'Purchase Manager', 'Purchase Team', 'Audit', 'Accounts')) &&
-                  (v !== 'vendors' || has(user, 'Purchase Manager', 'Purchase Team', 'GM', 'Audit')) &&
-                  (v !== 'audit' || has(user, 'Audit', 'GM')) &&
-                  (v !== 'rate-cards' || has(user, 'BOQ Team', 'GM', 'Audit')) &&
-                  (v !== 'grn' ||
-                    has(user, 'Site Engineer', 'QC', 'Project Manager', 'Purchase Manager', 'Purchase Team')) &&
-                  (!siteTabs.includes(String(v)) || (siteTabRoles[String(v)] || []).includes(siteRole)) &&
-                  (!siteOnly || siteTabs.includes(String(v))),
-              )
+            {navItems
               .map(([v, label, Icon]: any) => (
                 <TabsTrigger key={v} value={v}>
                   <Icon size={16} />
@@ -1652,6 +1657,38 @@ export default function Control({ user, testUserSwitch }: any) {
                 )[tab]
               }
             </h1>
+            <GlobalSearch
+              records={records}
+              projects={projectConfigs}
+              pages={navItems.map(([value, label]) => ({ value, label }))}
+              actions={[
+                ...(canStart('plan')
+                  ? [{ id: 'plan', label: 'New purchase request', run: () => { changeTab('plan'); setReqView('materials'); start('plan', { project: project === 'all' ? '' : project }); } }]
+                  : []),
+                ...(canStart('request')
+                  ? [{ id: 'request', label: 'New ad hoc request', run: () => { changeTab('request'); start('request', { project: project === 'all' ? '' : project }); } }]
+                  : []),
+              ]}
+              onOpenRecord={(r) => {
+                if (r.kind === 'quote') {
+                  // Plumbing & electrical requests are worked on their own page.
+                  setProject(r.project);
+                  changeTab('plan');
+                  setReqView('pe');
+                } else setSelected(r);
+              }}
+              onNavigate={changeTab}
+              onProject={(p) => {
+                setProject(p);
+                setOffset(0);
+                setNotice(`Showing project ${p} on every page.`);
+              }}
+              onVendor={(v) => {
+                setPeriod(makePeriod('all'));
+                setOrdersSeed({ text: v });
+                changeTab('orders');
+              }}
+            />
             <ThemeToggle />
             <div className="header-buttons">
             {((tab === 'plan' && reqView === 'materials' && !canPurchase && has(user, 'Project Manager', 'GM')) || (tab === 'purchase-plan' && canPurchase)) && (
@@ -1793,6 +1830,7 @@ export default function Control({ user, testUserSwitch }: any) {
           </TabsContent>
           <TabsContent value="orders">
             <Orders period={period}
+              searchSeed={ordersSeed}
               records={records}
               window={window}
               setWindow={setWindow}

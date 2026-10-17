@@ -4,7 +4,7 @@ import WeekInput from './week-input';
 import GroupOrder from './group-order';
 import PeReadyOrders,{peReady} from './pe-ready-orders';
 import {orderGroups} from '@/lib/orders';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/components/ui/table';
 import {addDays,validWindow,recordWindow,inPeriod,periodLabel,type Period} from '@/lib/weekly';
 import {money} from '@/lib/calculations';
@@ -24,10 +24,12 @@ function Tally({lines,records}:any){
  const tone=(d:number)=>Math.abs(d)<1e-9?'green':d<0?'amber':'red';
  return <section className="panel tablepanel"><div className="tablebar"><div><h2>Ordered vs delivered</h2><p>Final = what the vendor agreed (PO quantity, audited rate). Actual = what reached site (GRN accepted) and what was billed.</p></div></div><div className="plan-scroll"><Table><TableHeader><TableRow>{['Item / PO','Final qty','Actual qty','Qty difference','Final rate','Actual rate','Rate difference'].map(h=><TableHead key={h}>{h}</TableHead>)}</TableRow></TableHeader><TableBody>{lines.map((p:any)=>{const parent=records.find((r:any)=>r.id===p.parent)||{};const fq=Number(p.qty||0),aq=acceptedQty(p),bl=bills(p),fr=Number(parent.quoteRate??p.rate),ar=bl.length?Number(bl[bl.length-1].rate):Number(p.rate),dq=aq-fq,dr=ar-fr;return <TableRow key={p.id}><TableCell><b>{p.item}</b><small>{p.po} · {p.vendor} · project {p.project}</small></TableCell><TableCell title="Quantity on the purchase order">{q(fq)} {p.unit}</TableCell><TableCell title="Accepted at site (GRN)">{q(aq)} {p.unit}<small>{(p.receipts||[]).length} GRN</small></TableCell><TableCell><span className={'tag '+tone(dq)}>{dq>0?'+':''}{q(dq)} {p.unit}</span>{dq<0&&<small>{q(-dq)} still to come</small>}</TableCell><TableCell title="Audited vendor rate">₹{q(fr)}</TableCell><TableCell title={bl.length?'Rate on the vendor bill':'Rate on the PO (no bill yet)'}>₹{q(ar)}<small>{bl.length?'billed':'PO rate · no bill yet'}</small></TableCell><TableCell><span className={'tag '+tone(-dr)}>{dr>0?'+':''}₹{q(dr)}</span></TableCell></TableRow>;})}</TableBody></Table></div>{!lines.length&&<p className="empty">No purchase orders in these weeks.</p>}</section>;
 }
-export default function Orders({records,window,period,setWindow,project,setProject,addPurchase,addSchedule,start,refresh,user}:any){
+export default function Orders({records,window,period,setWindow,project,setProject,addPurchase,addSchedule,start,refresh,user,searchSeed}:any){
  // Only Purchase creates POs; others see what is ready and who acts next.
  const canOrder=!user||has(user,'Purchase Manager','Purchase Team');
  const per:Period=period||{key:'week',from:window,to:window};
+ // Global search can open this page already filtered (e.g. to one vendor).
+ useEffect(()=>{if(searchSeed?.text)setQuery(searchSeed.text);},[searchSeed]);
  const [query,setQuery]=useState(''),[view,setView]=useState<string>('');
  const purchases=records.filter((r:any)=>r.kind==='purchase');
  const match=(r:any)=>(project==='all'||r.project===project)&&inPeriod(recordWindow(r,records),per)&&[r.item,r.vendor,r.po].join(' ').toLowerCase().includes(query.toLowerCase());

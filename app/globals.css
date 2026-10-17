@@ -412,3 +412,25 @@ button.danger{color:#a1312a}
 .pe-order-row>form{flex:2 1 520px;margin:0;justify-content:flex-end}
 .pe-order-row>form .field{flex:1 1 140px}
 .pe-order-row>form .primary{height:42px}
+/* ---- Global search (Ctrl+K) ---- */
+.search-trigger{display:inline-flex!important;align-items:center;gap:8px;min-width:220px;justify-content:flex-start!important;color:var(--muted-foreground);font-weight:500!important;margin-left:auto}
+.search-trigger kbd,.search-input kbd,.search-footer kbd{margin-left:auto;font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 6px;border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;background:var(--muted);color:var(--muted-foreground)}
+.search-trigger:hover{border-color:#5cb7a8!important;color:var(--foreground)}
+.search-dialog{max-width:640px!important;width:calc(100% - 32px)!important;top:12vh!important}
+.search-dialog [data-slot=command]{padding:0}
+.search-input{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);color:var(--muted-foreground)}
+.search-input input{flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:16px;color:var(--foreground)}
+.search-list{max-height:min(60vh,520px)!important;padding:6px}
+.search-list [cmdk-group-heading]{text-transform:uppercase;letter-spacing:.6px;font-size:11px!important}
+.search-hit{align-items:center!important;padding:9px 10px!important}
+.search-hit-text{display:flex;flex-direction:column;min-width:0;flex:1}
+.search-hit-text b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-hit-text small{color:var(--muted-foreground);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.search-hit .tag{flex:none;font-size:11px;padding:2px 7px}
+.search-hit>svg:last-child{display:none}
+.search-footer{display:flex;gap:16px;align-items:center;padding:10px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted-foreground)}
+.search-footer span{display:inline-flex;align-items:center;gap:5px}
+.search-footer span:last-child{margin-left:auto}
+.search-footer kbd{margin-left:0}
+@media(max-width:850px){.search-trigger{min-width:0}.search-trigger kbd{display:none}}
+@media(max-width:600px){.search-trigger-label{display:none}.search-footer span:not(:last-child){display:none}.search-dialog{top:4vh!important}}
