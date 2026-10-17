@@ -4,6 +4,7 @@ import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/compon
 import {money} from '@/lib/calculations';
 import {inPeriod,periodLabel,singleWeek,weekLabel,type Period} from '@/lib/weekly';
 import {lineSaving,planTotals,targetUnitRate} from '@/lib/purchase-plan';
+import {vendorsFor} from '@/lib/vendors';
 
 // Purchase team's weekly purchase plan: BOQ-released items grouped by project. Review opens a
 // project's lines; Edit lets Purchase enter vendor, rate, quote ref and entity; Save draft keeps
@@ -16,13 +17,15 @@ const editable=(r:any)=>r.stage==='BOQ priced'&&r.closure?.state!=='Closed';
 const fromRecord=(r:any):Edit=>({version:r.version,vendor:r.vendor||'',vendorPhone:r.vendorPhone||'',quoteRate:r.quoteRate===''||r.quoteRate==null?'':String(r.quoteRate),quoteReference:r.quoteReference||'',entity:r.entity||'GROUP'});
 const stageTag=(r:any)=>r.stage==='Audit approved'?<span className="tag green">Audit approved</span>:r.stage==='Vendors finalized'?<span className="tag amber">With Audit</span>:r.stage==='Rejected'?<span className="tag red">Rejected</span>:r.stage==='Cancelled'?<span className="tag red">Cancelled</span>:r.auditReturn?<span className="tag red">Sent back by Audit</span>:<span className="tag">To price</span>;
 
-export default function PurchasePlan({records,project,window,period,refresh,openRecord,canEdit=true}:any){
+// Starting values from the Vendors & brands list: the PM's chosen vendor (or the only listed one) and its price.
+function withVendorList(e:Edit,r:any,list:any[]):Edit{const vs=vendorsFor(list,r.project,r.item);const v=vs.find((x:any)=>x.vendor===e.vendor&&(!r.brand||x.brand===r.brand))||(!e.vendor&&vs.length===1?vs[0]:null);if(!v)return e;return {...e,vendor:e.vendor||v.vendor,vendorPhone:e.vendorPhone||v.phone||'',quoteRate:e.quoteRate===''&&v.price!==''&&v.price!=null?String(v.price):e.quoteRate};}
+export default function PurchasePlan({records,project,window,period,refresh,openRecord,canEdit=true,vendorList=[]}:any){
  const per:Period=period||{key:'week',from:window,to:window},multi=!singleWeek(per);
  const rows=useMemo(()=>records.filter((r:any)=>['plan','request'].includes(r.kind)&&inPeriod(r.window,per)&&(project==='all'||r.project===project)&&['BOQ priced','Vendors finalized','Audit approved'].includes(r.stage)).sort((a:any,b:any)=>a.project.localeCompare(b.project)||String(a.window).localeCompare(String(b.window))||String(a.item).localeCompare(String(b.item))),[records,project,per.from,per.to]);
  const [edits,setEdits]=useState<Record<string,Edit>>({}),[busy,setBusy]=useState(''),[results,setResults]=useState<{project:string;sent:number;saved:number;errors:string[]}|null>(null);
  const [open,setOpen]=useState<string[]>([]),[editing,setEditing]=useState('');
  // Keep unsaved typing for lines that did not change on the server (e.g. after a partial save).
- useEffect(()=>{setEdits(prev=>Object.fromEntries(rows.filter(editable).map((r:any)=>[r.id,prev[r.id]?.version===r.version?prev[r.id]:fromRecord(r)])));},[rows]);
+ useEffect(()=>{setEdits(prev=>Object.fromEntries(rows.filter(editable).map((r:any)=>[r.id,prev[r.id]?.version===r.version?prev[r.id]:withVendorList(fromRecord(r),r,vendorList)])));},[rows,vendorList]);
  const draft=(r:any)=>({...r,...(edits[r.id]||{}),quoteRate:edits[r.id]?.quoteRate===''?'':Number(edits[r.id]?.quoteRate??r.quoteRate)});
  const changed=(r:any)=>{const e=edits[r.id];if(!e)return false;const o=fromRecord(r);return (['vendor','vendorPhone','quoteRate','quoteReference','entity'] as const).some(k=>e[k]!==o[k]);};
  const set=(id:string,k:Exclude<keyof Edit,'version'>,v:string)=>setEdits(x=>({...x,[id]:{...x[id],[k]:v}}));
@@ -68,7 +71,7 @@ export default function PurchasePlan({records,project,window,period,refresh,open
     {isOpen&&<div className="plan-scroll"><Table><TableHeader><TableRow>
      <TableHead>Item</TableHead><TableHead>Qty</TableHead><TableHead>Target rate</TableHead><TableHead>Vendor</TableHead><TableHead>Vendor rate</TableHead><TableHead>Quote ref.</TableHead><TableHead>Entity</TableHead><TableHead>Value</TableHead><TableHead>Saving vs target</TableHead>
     </TableRow></TableHeader><TableBody>{list.map((r:any)=>{const e=edits[r.id],can=isEdit&&editable(r)&&!!e,d=draft(r),s=lineSaving(d);return <TableRow key={r.id} className={s.aboveTarget?'row-warn':''}>
-     <TableCell><button className="rowlink" onClick={()=>openRecord(r)}><b>{r.item}</b><span>M{r.milestone} · Act {r.activity} {r.activityName}{r.kind==='request'?' · Ad hoc':''}{multi?' · Week '+weekLabel(r.window):''}</span></button><div className="plan-status">{stageTag(r)}{changed(r)&&<span className="tag amber">Draft</span>}{r.reschedule?.from&&<span className="tag">Moved from {r.reschedule.from}</span>}</div>{r.auditReturn&&r.stage==='BOQ priced'&&<small className="audit-note">Audit: {r.auditReturn.note}</small>}</TableCell>
+     <TableCell><button className="rowlink" onClick={()=>openRecord(r)}><b>{r.item}{r.brand?` · ${r.brand}`:''}</b><span>M{r.milestone} · Act {r.activity} {r.activityName}{r.kind==='request'?' · Ad hoc':''}{multi?' · Week '+weekLabel(r.window):''}</span></button><div className="plan-status">{stageTag(r)}{changed(r)&&<span className="tag amber">Draft</span>}{r.reschedule?.from&&<span className="tag">Moved from {r.reschedule.from}</span>}</div>{r.auditReturn&&r.stage==='BOQ priced'&&<small className="audit-note">Audit: {r.auditReturn.note}</small>}</TableCell>
      <TableCell className="nw">{s.qty} {r.unit}</TableCell>
      <TableCell className="nw">{targetUnitRate(r)??'—'}</TableCell>
      <TableCell>{can?<><input className="plan-input" aria-label="Vendor" placeholder="Vendor" value={e.vendor} maxLength={200} onChange={x=>set(r.id,'vendor',x.target.value)}/><input className="plan-input small" aria-label="Vendor phone" placeholder="Phone" value={e.vendorPhone} maxLength={40} onChange={x=>set(r.id,'vendorPhone',x.target.value)}/></>:<>{d.vendor||'—'}<small>{d.vendorPhone}</small></>}</TableCell>

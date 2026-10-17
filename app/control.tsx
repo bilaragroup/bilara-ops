@@ -13,6 +13,8 @@ const TRADES = ['Structural', 'Electrical', 'Plumbing'];
 import { defaultSettings } from '@/lib/settings';
 import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
+import Vendors from './vendors';
+import { vendorsFor } from '@/lib/vendors';
 import BoqReview, { waitingOn, waitingText, decide, nextStep, AuditDecision } from './boq-review';
 import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
@@ -54,7 +56,7 @@ import {
   stageNames,
   addDays,
 } from '@/lib/weekly';
-import { useEffect, useState, useMemo } from 'react';
+import { Fragment, useEffect, useState, useMemo } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -145,6 +147,23 @@ function ActivityChoice({ draft, set, readOnly }: any) {
       <Field name="activity" label="Activity number" required readOnly={readOnly || !draft.milestone} draft={draft} set={set} />
     );
   const options = list.map((a) => [String(a.number), a.number + ' · ' + a.name]);
+  options.push(['__custom', 'Other activity · type it in']);
+  // An activity typed by hand: its own number (for the request sequence) and name.
+  if (draft.activityCustom)
+    return (
+      <label className="field">
+        <span>Activity number * <button type="button" className="textbutton inline" onClick={() => set({ ...draft, activityCustom: false, activity: '', activityName: '' })}>Pick from list</button></span>
+        <input
+          required
+          inputMode="numeric"
+          pattern="[1-9][0-9]{0,2}"
+          placeholder="e.g. 107"
+          title="A whole number from 1 to 999"
+          value={draft.activity || ''}
+          onChange={(e) => set({ ...draft, activity: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })}
+        />
+      </label>
+    );
   if (current && !options.some((o) => o[0] === current)) options.unshift([current, current + ' · ' + (draft.activityName || 'not in the list')]);
   return (
     <label className="field">
@@ -152,7 +171,11 @@ function ActivityChoice({ draft, set, readOnly }: any) {
       <Choice
         label="Activity"
         value={current}
-        onChange={(v: string) => set({ ...draft, activity: v, activityName: activityOf(v)?.name || draft.activityName })}
+        onChange={(v: string) =>
+          v === '__custom'
+            ? set({ ...draft, activityCustom: true, activity: '', activityName: '' })
+            : set({ ...draft, activity: v, activityName: activityOf(v)?.name || draft.activityName })
+        }
         options={options}
       />
     </label>
@@ -388,6 +411,8 @@ export default function Control({ user, testUserSwitch }: any) {
     canSeeRates = canPrivate || canPurchase,
     boqOnly = user.roles.includes('BOQ Team') && !has(user, 'GM', 'Audit', 'Purchase Manager', 'Purchase Team', 'Accounts', 'Project Manager');
   const [referenceRates, setReferenceRates] = useState<any[]>([]);
+  // Vendors & brands list (project configuration); prices only arrive for purchasing roles.
+  const [vendorList, setVendorList] = useState<any[]>([]);
   // "For later": requests this person parked. Kept in this browser only.
   const laterKey = 'bilara-later:' + (user?.email || '');
   const [later, setLater] = useState<string[]>([]);
@@ -502,6 +527,10 @@ export default function Control({ user, testUserSwitch }: any) {
         prev ? data.records.find((r: any) => r.id === prev.id) || prev : null,
       );
       setHistory(data.history);
+      fetch('/api/vendors', { signal: AbortSignal.timeout(10000) })
+        .then((v) => (v.ok ? v.json() : null))
+        .then((v: any) => v && setVendorList(v.values || []))
+        .catch(() => null);
       if (!options.skipDocuments) {
         const docResponse = await fetch('/api/documents', {
           signal: AbortSignal.timeout(10000),
@@ -630,7 +659,8 @@ export default function Control({ user, testUserSwitch }: any) {
   const waitingFor = (r: any) =>
     !isClosed(r) &&
     ((r.gmApproval?.state === 'Pending' && has(user, 'GM')) ||
-      (r.stage === 'Submitted' && r.gmApproval?.state !== 'Pending' && has(user, 'BOQ Team')) ||
+      (r.stage === 'Submitted' && r.gmApproval?.state !== 'Pending' && has(user, 'BOQ Team') && !(r.auditReturn?.reason === 'quantity' && !r.auditReturn.fixedAt)) ||
+      (r.stage === 'Submitted' && r.auditReturn?.reason === 'quantity' && !r.auditReturn.fixedAt && has(user, 'Project Manager')) ||
       (r.stage === 'BOQ priced' && has(user, 'Purchase Manager', 'Purchase Team')) ||
       (r.stage === 'Vendors finalized' && has(user, 'Audit')) ||
       (r.stage === 'Audit approved' &&
@@ -1239,7 +1269,7 @@ export default function Control({ user, testUserSwitch }: any) {
                   <TableCell>
                     {r.due || r.vendor}
                     <small>
-                      {tab === 'purchase' ? r.po : r.vendor || r.owner}
+                      {tab === 'purchase' ? r.po : r.vendor || [r.owner, r.owner2].filter(Boolean).join(' / ')}
                     </small>
                   </TableCell>
                   <TableCell>
@@ -1377,6 +1407,18 @@ export default function Control({ user, testUserSwitch }: any) {
                           <span className="tag green">Forecast created</span>
                         )
                       ) : tab === 'payment' ? (
+                        <>
+                        {(() => {
+                          // Bill for this payment's PO line: jump to it in "Bills to check" to upload / view it.
+                          const po = buys.find((p) => p.id === r.parent);
+                          if (!po || !(po.receipts || []).length) return null;
+                          const billed = (po.bills || []).length > 0;
+                          return (
+                            <a className="textbutton" href={'#bill-' + po.id} title={billed ? 'See the bill in Bills to check' : 'Upload the vendor bill'}>
+                              {billed ? 'Bill ✓' : 'Upload bill'}
+                            </a>
+                          );
+                        })()}
                         <button
                           className="textbutton"
                           disabled={!canPay || r.paid === r.total}
@@ -1395,6 +1437,7 @@ export default function Control({ user, testUserSwitch }: any) {
                         >
                           Record payment
                         </button>
+                        </>
                       ) : r.status === 'Pending' ? (
                         <button
                           className="textbutton"
@@ -1482,6 +1525,7 @@ export default function Control({ user, testUserSwitch }: any) {
               ['documents', 'Documents', ClipboardList],
               ['backup', 'Backups', Download],
               ['rate-cards', 'Rate cards', IndianRupee],
+              ['vendors', 'Vendors & brands', Building2],
               ['projects', 'Projects', Building2],
               ['users', 'Users & roles', UserCog],
               ['settings', 'Settings', ShieldCheck],
@@ -1494,7 +1538,9 @@ export default function Control({ user, testUserSwitch }: any) {
                     has(user)) &&
                   // BOQ prices requests on Purchase requests; vendor rates and payments are for Purchase, Audit, GM and Accounts.
                   (v !== 'purchase-plan' || canPurchase || has(user, 'GM', 'Audit')) &&
-                  (v !== 'payment' || !boqOnly) &&
+                  // Payment forecast: Purchase, Audit and Accounts only.
+                  (v !== 'payment' || has(user, 'Purchase Manager', 'Purchase Team', 'Audit', 'Accounts')) &&
+                  (v !== 'vendors' || has(user, 'Purchase Manager', 'Purchase Team', 'GM', 'Audit')) &&
                   (v !== 'audit' || has(user, 'Audit', 'GM')) &&
                   (v !== 'rate-cards' || has(user, 'BOQ Team', 'GM', 'Audit')) &&
                   (v !== 'grn' ||
@@ -1541,6 +1587,7 @@ export default function Control({ user, testUserSwitch }: any) {
                     audit: 'Audit review',
                     grn: 'Receive goods (GRN)',
                     'rate-cards': 'Rate cards',
+                    vendors: 'Vendors & brands',
                     ...siteLabels,
                     quotes: 'Plumbing & electrical',
                     projects: 'Projects',
@@ -1587,7 +1634,7 @@ export default function Control({ user, testUserSwitch }: any) {
               <button onClick={() => setNotice('')}>Dismiss</button>
             </div>
           )}
-          {!['settings', 'projects', 'users', 'rate-cards', ...siteTabs].includes(tab) && (
+          {!['settings', 'projects', 'users', 'rate-cards', 'vendors', ...siteTabs].includes(tab) && (
             <div className="context-bar">
               <label className="field">
                 <span>Project</span>
@@ -1691,6 +1738,7 @@ export default function Control({ user, testUserSwitch }: any) {
               refresh={refresh}
               openRecord={setSelected}
               canEdit={canPurchase}
+              vendorList={vendorList}
             />
             {tab === 'purchase-plan' && canPurchase && (
               <Dialog open={carryOpen} onOpenChange={setCarryOpen}>
@@ -1717,6 +1765,9 @@ export default function Control({ user, testUserSwitch }: any) {
           </TabsContent>
           <TabsContent value="site-stock">
             {tab === 'site-stock' && (siteBoot ? <SiteStock boot={siteBoot} /> : <p className="muted">Loading…</p>)}
+          </TabsContent>
+          <TabsContent value="vendors">
+            {tab === 'vendors' && <Vendors projects={projectConfigs} onSaved={setVendorList} />}
           </TabsContent>
           <TabsContent value="rate-cards">
             {tab === 'rate-cards' && (
@@ -2390,6 +2441,7 @@ export default function Control({ user, testUserSwitch }: any) {
               setDraft={setDraft}
               settings={settings.values}
               projects={projectConfigs}
+              vendorList={vendorList}
               busy={busy}
               error={formError}
               submit={saveMulti}
@@ -2482,7 +2534,7 @@ export default function Control({ user, testUserSwitch }: any) {
                         set={setDraft}
                       />
                       <label className="field">
-                        <span>Owner *</span>
+                        <span>Primary owner *</span>
                         <Choice
                           label="Owner"
                           value={draft.owner || ''}
@@ -2495,6 +2547,20 @@ export default function Control({ user, testUserSwitch }: any) {
                               ...(draft.id && draft.owner ? [draft.owner] : []),
                             ]),
                           ].map((v) => [v, v])}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Secondary owner</span>
+                        <Choice
+                          label="Secondary owner"
+                          value={draft.owner2 || ''}
+                          onChange={(v: string) => setDraft({ ...draft, owner2: v === '__none' ? '' : v })}
+                          options={[
+                            ['__none', 'None'],
+                            ...[...new Set([...settings.values.owners, ...(draft.owner2 ? [draft.owner2] : [])])]
+                              .filter((v) => v !== draft.owner)
+                              .map((v) => [v, v]),
+                          ]}
                         />
                       </label>
                       <label className="field">
@@ -2901,12 +2967,7 @@ export default function Control({ user, testUserSwitch }: any) {
                         draft={draft}
                         set={setDraft}
                       />
-                      <Field
-                        name="shipTo"
-                        label="Delivery address"
-                        draft={draft}
-                        set={setDraft}
-                      />
+                      
                       <Field
                         name="exceptionReason"
                         label="Reason if outside Wednesday or rate has changed"
@@ -3196,7 +3257,7 @@ export default function Control({ user, testUserSwitch }: any) {
 }
 // Shows the PM what BOQ has approved for this activity and item, if BOQ already set it
 // on an earlier request; otherwise explains that BOQ will enter it on review.
-function BoqQuantityNote({ records = [], project, milestone, activity, item, unit, qty }: any) {
+function BoqQuantityNote({ records = [], project, milestone, activity, item, unit, qty, compact = false }: any) {
   if (!item || !project || !activity) return null;
   const same = records.filter(
     (r: any) =>
@@ -3210,7 +3271,7 @@ function BoqQuantityNote({ records = [], project, milestone, activity, item, uni
   );
   const baseline = same.map((r: any) => Number(r.activityBoqQty)).find((n: number) => n > 0);
   if (!baseline)
-    return (
+    return compact ? null : (
       <p className="full alert boq-qty-note">
         Approved activity BOQ quantity: the BOQ team enters this when they review the request.
       </p>
@@ -3228,8 +3289,153 @@ function BoqQuantityNote({ records = [], project, milestone, activity, item, uni
   );
 }
 
+/** Items of one request as a table: search an item (its category follows), unit, quantity, vendor. */
+function ItemLinesTable({ draft, setDraft, settings, records, vendorList, hasRate }: any) {
+  const categoryOf: Record<string, string> = {};
+  Object.entries(RATE_CARD_ITEM_DEFAULTS).forEach(([k, v]: any) => (categoryOf[k.toLowerCase()] = v.itemCategory));
+  vendorList.forEach((v: any) => v.item && v.category && !categoryOf[v.item.toLowerCase()] && (categoryOf[v.item.toLowerCase()] = v.category));
+  const allItems = [...new Set([...RATE_CARD_ITEMS, ...vendorList.map((v: any) => v.item), ...(settings.catalogItems || []).map((c: any) => c.item)].filter(Boolean))] as string[];
+  const setLine = (i: number, patch: any) =>
+    setDraft({ ...draft, lines: draft.lines.map((l: any, n: number) => (n === i ? { ...l, ...patch } : l)) });
+  return (
+    <div className="plan-scroll">
+      <table className="item-lines">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Category</th>
+            <th>Item (search)</th>
+            <th>Unit</th>
+            <th>Quantity</th>
+            <th>Vendor · brand</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {draft.lines.map((line: any, i: number) => {
+            const listId = 'items-' + i;
+            const options = allItems.filter((v) => !line.itemCategory || (categoryOf[v.toLowerCase()] || 'Other Items') === line.itemCategory);
+            const vendors = line.item ? vendorsFor(vendorList, draft.project, line.item) : [];
+            const chosen = vendors.find((v: any) => v.vendor === line.vendor && (v.brand || '') === (line.brand || ''));
+            return (
+              <Fragment key={i}>
+                <tr>
+                  <td>{i + 1}</td>
+                  <td>
+                    <select
+                      className="plan-input"
+                      required
+                      aria-label={'Category, item ' + (i + 1)}
+                      value={line.itemCategory}
+                      onChange={(e) => setLine(i, { itemCategory: e.target.value })}
+                    >
+                      <option value="">Category…</option>
+                      {settings.itemCategories.map((v: string) => (
+                        <option key={v}>{v}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="plan-input item-search"
+                      required
+                      list={listId}
+                      placeholder={line.itemCategory ? `Search ${line.itemCategory.toLowerCase()}…` : 'Search or type an item…'}
+                      aria-label={'Item ' + (i + 1)}
+                      value={line.item}
+                      onChange={(e) => {
+                        const item = e.target.value;
+                        const known = categoryOf[item.trim().toLowerCase()];
+                        const defaults = (RATE_CARD_ITEM_DEFAULTS as any)[item] || {};
+                        setLine(i, {
+                          item,
+                          itemChoice: (RATE_CARD_ITEMS as readonly string[]).includes(item) ? item : '__other',
+                          ...(known ? { itemCategory: known } : !line.itemCategory && item ? { itemCategory: 'Other Items' } : {}),
+                          ...(defaults.unit && !line.unit ? { unit: defaults.unit } : {}),
+                          vendor: '',
+                          brand: '',
+                          vendorPhone: '',
+                        });
+                      }}
+                    />
+                    <datalist id={listId}>
+                      {options.map((v) => (
+                        <option key={v} value={v} />
+                      ))}
+                    </datalist>
+                  </td>
+                  <td>
+                    <input className="plan-input" style={{ width: 80 }} required placeholder="BAG, KG…" value={line.unit} onChange={(e) => setLine(i, { unit: e.target.value })} aria-label={'Unit, item ' + (i + 1)} />
+                  </td>
+                  <td>
+                    <input className="plan-input" style={{ width: 100 }} required type="number" min="0.000001" step="any" value={line.boqQty} onChange={(e) => setLine(i, { boqQty: e.target.value })} aria-label={'Quantity, item ' + (i + 1)} />
+                  </td>
+                  <td>
+                    <select
+                      className="plan-input"
+                      aria-label={'Vendor, item ' + (i + 1)}
+                      value={chosen ? chosen.id : line.vendor ? '__typed' : ''}
+                      onChange={(e) => {
+                        const v = vendors.find((x: any) => x.id === e.target.value);
+                        setLine(i, v ? { vendor: v.vendor, brand: v.brand, vendorPhone: v.phone } : { vendor: '', brand: '', vendorPhone: '' });
+                      }}
+                    >
+                      <option value="">{vendors.length ? 'Purchase decides' : 'No vendor listed · Purchase decides'}</option>
+                      {line.vendor && !chosen && <option value="__typed">{line.vendor}</option>}
+                      {vendors.map((v: any) => (
+                        <option key={v.id} value={v.id}>
+                          {v.vendor}
+                          {v.brand ? ' · ' + v.brand : ''}
+                          {v.project ? '' : ' (all projects)'}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    {draft.lines.length > 1 && (
+                      <button
+                        type="button"
+                        className="remove-entry"
+                        aria-label={'Remove item ' + (i + 1)}
+                        onClick={() => setDraft({ ...draft, lines: draft.lines.filter((_: any, n: number) => n !== i) })}
+                      >
+                        <XIcon />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {line.item && draft.project && (
+                  <tr className="line-note">
+                    <td />
+                    <td colSpan={6}>
+                      <span className={'tag ' + (hasRate(line.item) ? 'green' : 'amber')}>
+                        {hasRate(line.item) ? 'Rate card matched' : 'No rate card · BOQ sets the rate'}
+                      </span>{' '}
+                      <BoqQuantityNote
+                        records={records}
+                        project={draft.project}
+                        milestone={draft.milestone}
+                        activity={draft.activity}
+                        item={line.item}
+                        unit={line.unit}
+                        qty={Number(line.boqQty) || 0}
+                        compact
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function MultiItemRequest({
   records = [],
+  vendorList = [],
   draft,
   setDraft,
   settings,
@@ -3290,12 +3496,21 @@ function MultiItemRequest({
             />
           </label>
           <label className="field">
-            <span>Owner *</span>
+            <span>Primary owner *</span>
             <Choice
-              label="Owner"
+              label="Primary owner"
               value={draft.owner || ''}
               onChange={(v: string) => change('owner', v)}
               options={settings.owners.map((v: string) => [v, v])}
+            />
+          </label>
+          <label className="field">
+            <span>Secondary owner</span>
+            <Choice
+              label="Secondary owner"
+              value={draft.owner2 || ''}
+              onChange={(v: string) => change('owner2', v === '__none' ? '' : v)}
+              options={[['__none', 'None'], ...settings.owners.filter((v: string) => v !== draft.owner).map((v: string) => [v, v])]}
             />
           </label>
           <label className="field">
@@ -3351,102 +3566,14 @@ function MultiItemRequest({
               <Plus size={16} /> Add item
             </button>
           </div>
-          {draft.lines.map((line: any, i: number) => (
-            <section className="request-line" key={i}>
-              <div className="request-line-title">
-                <b>Item {i + 1}</b>
-                {draft.lines.length > 1 && (
-                  <button
-                    type="button"
-                    className="remove-entry"
-                    aria-label={'Remove item ' + (i + 1)}
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        lines: draft.lines.filter(
-                          (_: any, n: number) => n !== i,
-                        ),
-                      })
-                    }
-                  >
-                    <XIcon />
-                  </button>
-                )}
-              </div>
-              <div className="formgrid">
-                <label className="field">
-                  <span>Category *</span>
-                  <select
-                    required
-                    value={line.itemCategory}
-                    onChange={(e) => {
-                      const lines = draft.lines.map((l: any, n: number) =>
-                        n === i ? { ...l, ...categoryChange(l, e.target.value) } : l,
-                      );
-                      setDraft({ ...draft, lines });
-                    }}
-                  >
-                    <option value="">Choose category</option>
-                    {settings.itemCategories.map((v: string) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
-                <ItemPicker
-                  item={line.item}
-                  itemChoice={line.itemChoice}
-                  category={line.itemCategory}
-                  onChange={(values: any) => {
-                    const defaults = RATE_CARD_ITEM_DEFAULTS[values.item] || {};
-                    const lines = draft.lines.map((l: any, n: number) =>
-                      n === i ? { ...l, ...values, ...defaults } : l,
-                    );
-                    setDraft({ ...draft, lines });
-                  }}
-                />
-                <label className="field">
-                  <span>Unit *</span>
-                  <input
-                    required
-                    placeholder="BAG, KG, NOS…"
-                    value={line.unit}
-                    onChange={(e) => setLine(i, 'unit', e.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Requested quantity *</span>
-                  <input
-                    required
-                    type="number"
-                    min="0.000001"
-                    step="any"
-                    value={line.boqQty}
-                    onChange={(e) => setLine(i, 'boqQty', e.target.value)}
-                  />
-                </label>
-                <BoqQuantityNote
-                  records={records}
-                  project={draft.project}
-                  milestone={draft.milestone}
-                  activity={draft.activity}
-                  item={line.item}
-                  unit={line.unit}
-                  qty={Number(line.boqQty) || 0}
-                />
-                {line.item && draft.project && (
-                  <div
-                    className={
-                      'full alert ' + (hasRate(line.item) ? 'green' : 'amber')
-                    }
-                  >
-                    {hasRate(line.item)
-                      ? 'Project rate matched. BOQ and purchasing target rates will be applied automatically.'
-                      : 'No project rate is saved for this item. It will go to BOQ review.'}
-                  </div>
-                )}
-              </div>
-            </section>
-          ))}
+          <ItemLinesTable
+            draft={draft}
+            setDraft={setDraft}
+            settings={settings}
+            records={records}
+            vendorList={vendorList}
+            hasRate={hasRate}
+          />
         </div>
       </fieldset>
       {error && (

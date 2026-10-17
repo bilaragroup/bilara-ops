@@ -11,6 +11,7 @@ const row=async(id)=>(await all()).find(r=>r.id===id);
 const add=(s,n)=>{const x=new Date(s+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};
 const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
 function normalWindow(now=new Date()){const add=(s,n)=>{const x=new Date(s+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};const t=now.toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}),e=add(t,14),back=(new Date(e+'T00:00:00Z').getUTCDay()+3)%7;return back?add(e,7-back):e;}
+const billDoc=async()=>{const id=crypto.randomUUID();await runtime.db.prepare("INSERT INTO documents (id,project,window,vendor,type,filename,mime,size,object_key,data,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(id,'100','2026-01-01','QA','Final bill','bill.pdf','application/pdf',1,'',JSON.stringify({recordIds:[]}),new Date().toISOString()).run();return id;};
 let passed=0;const pass=m=>{passed++;console.log('PASS '+m);};
 const PM='pm@example.invalid',SE='se@example.invalid',SE2='se2@example.invalid',BOQ='boq@example.invalid',BUY='pmgr@example.invalid',AUD='audit@example.invalid',ACC='acc@example.invalid',GM='gm@example.invalid';
 try{
@@ -51,7 +52,7 @@ try{
 
  const pay=async(s,amount,email=ACC)=>{const x=(await all()).find(r=>r.id===s);return call('records',{id:s,version:x.version,action:'settle',amount,date:today,reference:'UTR-'+Math.random(),paymentMode:'UPI',accountsBy:'QA'},email);};
  let r=await pay(grnSched.id,28800);assert.equal(r.status,400);assert.match(r.data.error,/check the vendor bill/);
- const bill=async(po,body,email=ACC)=>{const x=await row(po);return call('bill-check',{id:po,version:x.version,action:'add',...body},email);};
+ const bill=async(po,body,email=ACC)=>{const x=await row(po);return call('bill-check',{id:po,version:x.version,action:'add',documentId:await billDoc(),...body},email);};
  r=await bill(cement.po,{billNo:'KT-501',billDate:today,qty:90,rate:330,amount:29700});assert.equal(r.status,200);assert.equal(r.data.status,'Mismatch');
  assert.match(r.data.issues.join(' '),/above the PO rate/);
  r=await pay(grnSched.id,28800);assert.equal(r.status,400);assert.match(r.data.error,/does not match/);
@@ -83,7 +84,8 @@ try{
  ss=await schedules(sand.po);const sg=ss.find(s=>s.basis==='GRN');
  assert.equal(sg.total,300000);assert.equal(ss.reduce((n,s)=>n+s.total,0),500000);assert.equal(ss.find(s=>s.basis!=='GRN').total,200000);
  assert.equal(sg.due,today);
- await ok('bill-check',{id:sand.po,version:(await row(sand.po)).version,action:'add',billNo:'PC-9',billDate:today,qty:100,rate:50,amount:5000},ACC);
+ {const nodoc=await call('bill-check',{id:sand.po,version:(await row(sand.po)).version,action:'add',billNo:'PC-8',billDate:today,qty:100,rate:50,amount:5000},ACC);assert.equal(nodoc.status,400);assert.match(nodoc.data.error,/Upload the bill/);}
+ await ok('bill-check',{id:sand.po,version:(await row(sand.po)).version,action:'add',documentId:await billDoc(),billNo:'',billDate:today,qty:100,rate:50,amount:5000},ACC);
  assert.equal((await row(sand.po)).billStatus,'Matched');
  assert.equal((await pay(sg.id,3000)).status,200);
  r=await bill(sand.po,{billNo:'PC-10',billDate:today,qty:1,rate:50,amount:50});assert.equal(r.status,400);assert.match(r.data.error,/already billed/);

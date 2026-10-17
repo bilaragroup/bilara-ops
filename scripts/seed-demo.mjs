@@ -73,7 +73,7 @@ async function receive(buy,se,received,accepted,materialCode,inputUnit,challan,m
   poLines:[{id:buy.id,version:buy.version,received,accepted,materialCode,inputUnit,...measure}]},se);
  return {grn:v.lastRecordedGrn,buy:await get(buy.id)};
 }
-async function billCheck(buy,billNo,qty,rate,amount){const b=await get(buy.id);await call('bill-check',{id:buy.id,version:b.version,action:'add',billNo,billDate:today,qty,rate,amount},P.acc);return get(buy.id);}
+async function billCheck(buy,billNo,qty,rate,amount,documentId){const b=await get(buy.id);await call('bill-check',{id:buy.id,version:b.version,action:'add',billNo,billDate:today,qty,rate,amount,documentId},P.acc);return get(buy.id);}
 async function pay(buy,mode,ref,receipt){const s=(await records()).find(x=>x.kind==='payment'&&x.parent===buy.id&&x.basis==='GRN');
  await call('accounts',{batchId:uuid(),paymentMode:mode,date:today,accountsBy:'Demo Accounts',reference:ref,payments:[{id:s.id,version:s.version,amount:(s.total-s.paid)/100}],...(receipt?{receiptId:receipt}:{})},P.acc);}
 
@@ -185,6 +185,15 @@ try{
  await card({type:'range',from:'901',to:'910'},[{item:'Cement',unit:'BAG',originalRate:360,discountPercent:5},{item:'MSand',unit:'CFT',originalRate:72,discountPercent:5}]);
  await card({type:'project',project:'902'},[{item:'12 mm Steel',unit:'KG',originalRate:76,discountPercent:5},{item:'16 mm Steel',unit:'KG',originalRate:77,discountPercent:5}]);
  done('Rate cards: default card, projects 901–910 card (cement, M-sand), project 902 card (steel). New requests take their BOQ rate from these');
+ // Vendors & brands (Purchase's project configuration): requests pick vendors from this list.
+ {const v=await call('vendors',undefined,P.buy);await call('vendors',{version:v.version,values:[
+  {project:'',category:'Materials',item:'Cement',brand:'UltraTech',vendor:'Kerala Traders',phone:'98470 34567',unit:'BAG',price:335},
+  {project:'',category:'Materials',item:'Cement',brand:'ACC',vendor:'Malabar Cements Depot',phone:'98470 45678',unit:'BAG',price:342},
+  {project:'',category:'Materials',item:'MSand',brand:'',vendor:'Periyar Crushers',phone:'98470 12345',unit:'CFT',price:66},
+  {project:'902',category:'Materials',item:'12 mm Steel',brand:'JSW',vendor:'Sree Steels',phone:'98470 23456',unit:'KG',price:79},
+  {project:'',category:'Rentals',item:'Hitachi',brand:'Hitachi EX70',vendor:'Sadhu Earthmovers',phone:'98470 56789',unit:'HOUR',price:1140},
+  {project:'',category:'Shuttering Items',item:'Shuttering Items',brand:'',vendor:'Metro Rentals',phone:'98470 67890',unit:'LOT',price:''}]},P.buy);}
+ done('Vendors & brands: cement (two brands), M-sand, steel for 902, Hitachi hire, shuttering');
 
  await openingStock();
 
@@ -238,9 +247,9 @@ try{
  const blocks=await raise('901','Solid Cement Blocks 12 x 8 x 6','NOS',1500,W,21,{milestone:'2',activityName:'Superstructure brick work up to G/F lintel'});await boqApprove(blocks,1500);await quote(blocks,'Kerala Traders','98470 34567',41,'KT-770');
  await audit(blocks,'Approved','Rs 1.75 a block below target. Approved.');buy=await order(blocks,0);
  got=await receive(buy,P.se1,1500,1500,'CEMENT_BLOCK_6_INCH','NOS','KT-DC-3301');buy=got.buy;
- await upload({type:'Final bill',project:'901',window:W,vendor:'Kerala Traders',recordIds:[buy.id],reference:'KT-BILL-3301',email:P.buy,file:'Kerala Traders bill KT-BILL-3301.pdf',
+ const blockBill=await upload({type:'Final bill',project:'901',window:W,vendor:'Kerala Traders',recordIds:[buy.id],reference:'KT-BILL-3301',email:P.buy,file:'Kerala Traders bill KT-BILL-3301.pdf',
   bytes:pdf('Kerala Traders - Bill KT-BILL-3301',['Bill to: Bilara Group, Project 901 (Kakkanad Villa)','PO: '+buy.po+'    GRN: '+got.grn,'Date: '+today,'','Solid cement blocks 12 x 8 x 6   1,500 NOS @ 41.00   61,500.00','','Total: Rs 61,500.00 (GST included)'])});
- buy=await billCheck(buy,'KT-BILL-3301',1500,41,61500);
+ buy=await billCheck(buy,'KT-BILL-3301',1500,41,61500,blockBill);
  const receipt=await upload({type:'Payment receipt',project:'901',window:W,vendor:'Kerala Traders',recordIds:[buy.id],reference:'UPI-889120',email:P.acc,file:'UPI receipt 889120.pdf',
   bytes:pdf('Payment receipt - UPI 889120',['Paid to: Kerala Traders','Amount: Rs 61,500.00','Mode: UPI    Reference: UPI-REF-889120','Date: '+today,'For: KT-BILL-3301 (PO '+buy.po+')'])});
  await pay(buy,'UPI','UPI-REF-889120',receipt);

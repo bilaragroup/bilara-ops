@@ -24,11 +24,11 @@ export default function AuditReview({records,project,window,period,refresh,openR
  // Saving recorded at approval time; fall back to current values for older approvals.
  const approvedSaving=approved.reduce((n:number,r:any)=>n+((r.auditSavings?.savingVsBoq)??(lineSaving(r).savingVsBoq??0)),0);
  const projects=[...new Set<string>(pending.map((r:any)=>r.project))].map(p=>({project:p,...planTotals(pending.filter((r:any)=>r.project===p))}));
- async function decide(decision:'Approved'|'Returned'|'Rejected'){
+ async function decide(decision:'Approved'|'Returned'|'ReturnQty'|'ReturnPrice'|'Rejected'){
   if(!chosen.length||!note.trim()||!confirmed)return;setBusy(true);setError('');setMessage('');
   try{const res=await fetch('/api/audit-decision',{method:'POST',signal:AbortSignal.timeout(20000),headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:chosen.map((r:any)=>r.id),versions:Object.fromEntries(chosen.map((r:any)=>[r.id,r.version])),decision,note,confirmed})});
    const d:any=await res.json();if(!res.ok)throw Error(d.error);
-   setMessage(`${d.count} line${d.count===1?'':'s'} ${decision==='Approved'?'approved, ready for purchase orders':decision==='Returned'?'sent back to Purchase':'rejected'}.`);
+   setMessage(`${d.count} line${d.count===1?'':'s'} ${decision==='Approved'?'approved, ready for purchase orders':decision==='Returned'?'sent back to Purchase':decision==='ReturnQty'?'sent back to the PM for the quantity':decision==='ReturnPrice'?'sent back to the BOQ team for the price':'rejected'}.`);
    setSelected([]);setNote('');setConfirmed(false);await refresh({skipDocuments:true});
   }catch(e:any){setError(e?.name==='TimeoutError'?'The decision timed out. Refresh and check before retrying.':e.message);}finally{setBusy(false);}
  }
@@ -60,7 +60,7 @@ export default function AuditReview({records,project,window,period,refresh,openR
     <p className="muted">{chosen.length?`${chosen.length} selected · vendor ${money(chosenTotals.vendor)} · saving ${money(chosenTotals.savingVsBoq)}${chosenTotals.aboveBoq?` · ${chosenTotals.aboveBoq} above BOQ`:''}`:'Select lines to decide.'}</p>
     <label className="field"><span>Decision note *</span><input value={note} onChange={e=>setNote(e.target.value)} maxLength={2000} placeholder="e.g. Rates checked against BOQ and quotations"/></label>
     <label><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> I confirm I am authorized to record this audit decision.</label>
-    <div className="actions"><button className="primary" disabled={busy||!chosen.length||!note.trim()||!confirmed} onClick={()=>decide('Approved')}>Approve {chosen.length||''}</button><button className="secondary" disabled={busy||!chosen.length||!note.trim()||!confirmed} onClick={()=>decide('Returned')}>Send back to Purchase</button><button className="secondary danger" disabled={busy||!chosen.length||!note.trim()||!confirmed} onClick={()=>decide('Rejected')}>Reject</button></div>
+    <div className="actions"><button className="primary" disabled={busy||!chosen.length||!note.trim()||!confirmed} onClick={()=>decide('Approved')}>Approve {chosen.length||''}</button><button className="secondary" disabled={busy||!chosen.length||!note.trim()||!confirmed} onClick={()=>decide('ReturnQty')} title="The PM corrects the quantity, then BOQ releases again">Quantity issue → PM</button><button className="secondary" disabled={busy||!chosen.length||!note.trim()||!confirmed} onClick={()=>decide('ReturnPrice')} title="The BOQ team re-checks the rate">Price issue → BOQ</button><button className="secondary" disabled={busy||!chosen.length||!note.trim()||!confirmed} onClick={()=>decide('Returned')}>Renegotiate → Purchase</button><button className="secondary danger" disabled={busy||!chosen.length||!note.trim()||!confirmed} onClick={()=>decide('Rejected')}>Reject</button></div>
    </div>}
   </div>
   {error&&<p className="alert red" role="alert">{error}</p>}{message&&<p className="alert green" role="status">{message}</p>}

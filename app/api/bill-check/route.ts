@@ -31,14 +31,20 @@ async function handlePOST(req:Request,a:Actor){try{
   if(!has(a,'Accounts','Purchase Manager','Purchase Team'))return fail('Accounts or Purchase enter the vendor bill.',403);
   if(!(acceptedQty(p)>0))return fail(`${p.item}: record the GRN before checking the bill.`);
   const billNo=String(b.billNo||'').trim(),billDate=String(b.billDate||''),qty=Number(b.qty),rate=Number(b.rate),amount=cents(Number(b.amount));
-  if(!billNo||billNo.length>60)return fail('Enter the bill number.');
+  if(billNo.length>60)return fail('The bill number is too long.');
+  // The bill image (or a Drive link to it) is required; the bill number is optional.
+  const documentId=String(b.documentId||'').trim();
+  if(!documentId)return fail('Upload the bill image or PDF (or link it from Google Drive).');
+  const doc=await db.prepare('SELECT id FROM documents WHERE id=?').bind(documentId).first<any>();
+  if(!doc)return fail('The uploaded bill was not found. Upload it again.');
   if(!dateValid(billDate)||billDate>indiaToday())return fail('Enter the bill date (not in the future).');
   if(!(qty>0)||!(rate>=0)||!(amount>0))return fail('Enter the billed quantity, rate and total amount.');
-  const dup=(await db.prepare("SELECT data FROM records WHERE kind='purchase'").all()).results.some((r:any)=>{const d=JSON.parse(r.data);return String(d.vendor||'').trim().toLowerCase()===String(p.vendor).trim().toLowerCase()&&(d.bills||[]).some((x:any)=>String(x.billNo).trim().toLowerCase()===billNo.toLowerCase());});
+  const dup=!!billNo&&(await db.prepare("SELECT data FROM records WHERE kind='purchase'").all()).results.some((r:any)=>{const d=JSON.parse(r.data);return String(d.vendor||'').trim().toLowerCase()===String(p.vendor).trim().toLowerCase()&&(d.bills||[]).some((x:any)=>String(x.billNo).trim().toLowerCase()===billNo.toLowerCase());});
   if(dup)return fail(`Bill ${billNo} from ${p.vendor} is already entered.`,409);
   // A bill covers goods already received. Once every accepted unit is billed, a new bill only comes with the next delivery.
   if(billedQty(p)>=acceptedQty(p)-0.0000001)return fail(`Everything received on ${p.po||'this PO'} is already billed. Record the next GRN before adding another bill.`);
-  const bill:any={billNo,billDate,qty,rate,amount,documentId:String(b.documentId||'')||undefined,by:a.name,email:a.email,at:now};
+  const grnNos=(Array.isArray(p.receipts)?p.receipts:[]).map((x:any)=>x.grnNo).filter(Boolean);
+  const bill:any={billNo,billDate,qty,rate,amount,documentId,grnNos,by:a.name,email:a.email,at:now};
   data.bills=[...bills(p),bill];
   const after={...p,bills:data.bills,billApproval:undefined};
   bill.result=billIssues(after).length?'Mismatch':'Matched';

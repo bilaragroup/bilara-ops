@@ -140,6 +140,9 @@ for (const kind of ['plan', 'request'])
     'rateSource',
     'rateCard',
     'trade',
+    'owner2',
+    'brand',
+    'activityCustom',
     'vendor',
     'vendorPhone',
     'quoteRate',
@@ -321,6 +324,13 @@ async function handlePOST(req: Request, a: Actor) {
     // Audit decisions are written by /api/audit-decision; keep them on later edits.
     for (const k of ['auditBy', 'auditSavings', 'auditReturn', 'reschedule', 'carryForwards', 'receipts', 'acceptedQty', 'receivedQty', 'rejectedQty', 'orderedTotal', 'originalQty', 'advanceApplied', 'shortClose', 'bills', 'billStatus', 'billSummary', 'billApproval', 'basis', 'grnNo', 'grnAdjustments', 'expectedPaymentDate'])
       if (old?.[k]) data[k] = old[k];
+    // Audit sent it back for quantity: record when the PM corrected it (then BOQ releases again).
+    if (
+      old?.auditReturn?.reason === 'quantity' &&
+      !old.auditReturn.fixedAt &&
+      ['boqQty', 'qty'].some((k) => b[k] !== undefined && Number(b[k]) !== Number(old[k]))
+    )
+      data.auditReturn = { ...old.auditReturn, fixedAt: new Date().toISOString(), fixedBy: a.name || a.email };
     if (
       has(a, 'GM') &&
       ['BOQ priced', 'Vendors finalized', 'Audit approved'].includes(data.stage)
@@ -432,6 +442,7 @@ async function handlePOST(req: Request, a: Actor) {
         };
       for (const [field, list] of [
         ['owner', 'owners'],
+        ['owner2', 'owners'],
         ['itemCategory', 'itemCategories'],
         ['boqOwner', 'boqPreparers'],
       ]) {
@@ -522,14 +533,17 @@ async function handlePOST(req: Request, a: Actor) {
           return fail(
             'Activity must be a whole number, such as 4. Request sequence is assigned automatically.',
           );
-        const listed = activityOf(data.activity);
-        if (!listed)
+        // An activity typed by hand (not in the company list) keeps its own number and name.
+        const listed = data.activityCustom ? null : activityOf(data.activity);
+        if (data.activityCustom) {
+          if (!String(data.activityName || '').trim()) return fail('Enter the activity name.');
+        } else if (!listed)
           return fail('Activity ' + data.activity + ' is not in the company activity list.');
-        if (String(listed.milestone) !== data.milestone)
+        if (listed && String(listed.milestone) !== data.milestone)
           return fail(
             'Activity ' + listed.number + ' (' + listed.name + ') belongs to ' + milestoneLabel(listed.milestone) + '.',
           );
-        if (!data.activityName) data.activityName = listed.name;
+        if (listed && !data.activityName) data.activityName = listed.name;
       }
       if (data.activityBoqQty !== undefined && data.activityBoqQty <= 0)
         return fail('Activity BOQ quantity must be greater than zero.');

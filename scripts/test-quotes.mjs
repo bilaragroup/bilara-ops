@@ -10,6 +10,7 @@ const all=async(email)=>(await call('records',undefined,email)).data.records;
 const row=async(id,email)=>(await all(email)).find(r=>r.id===id);
 const add=(s,n)=>{const x=new Date(s+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};
 const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+const billDoc=async()=>{const id=crypto.randomUUID();await runtime.db.prepare("INSERT INTO documents (id,project,window,vendor,type,filename,mime,size,object_key,data,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(id,'100','2026-01-01','QA','Final bill','bill.pdf','application/pdf',1,'',JSON.stringify({recordIds:[]}),new Date().toISOString()).run();return id;};
 let passed=0;const pass=m=>{passed++;console.log('PASS '+m);};
 const PM='pm@example.invalid',SE='se@example.invalid',SE2='se2@example.invalid',BOQ='boq@example.invalid',BUY='pmgr@example.invalid',AUD='audit@example.invalid',ACC='acc@example.invalid',GM='gm@example.invalid';
 async function upload(email,meta,bytes=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0]),name='list.png',type='image/png'){
@@ -92,7 +93,7 @@ try{
  await ok('grn',{action:'receive',grnNo:'GRN-P1',date:today,items:[{id:po.id,version:po.version,received:1,accepted:1}]},SE);
  let p=await row(po.id,ACC);assert.equal(p.status,'Delivered');
  const sched=(await all(ACC)).find(x=>x.kind==='payment'&&x.parent===po.id&&x.basis==='GRN');assert.equal(sched.total,6956300);assert.equal(sched.due,add(today,7));
- let b=await ok('bill-check',{id:po.id,version:p.version,action:'add',billNo:'B 2562/26-27',billDate:today,qty:1,rate:69563,amount:69563},ACC);assert.equal(b.status,'Matched');
+ let b=await ok('bill-check',{id:po.id,version:p.version,action:'add',documentId:await billDoc(),billNo:'B 2562/26-27',billDate:today,qty:1,rate:69563,amount:69563},ACC);assert.equal(b.status,'Matched');
  const settle=await call('records',{id:sched.id,version:sched.version,action:'settle',amount:69563,date:today,reference:'UTR-1',paymentMode:'Account Transfer',accountsBy:'QA'},ACC);assert.equal(settle.status,200,JSON.stringify(settle));
  await upload(BUY,{project:'970',window:c.window,vendor:'Supreme Agencies',type:'Final bill',recordIds:[po.id],reference:'B 2562',uploadedBy:'QA Buyer'},Buffer.from('%PDF-1.4\n%%EOF'),'bill.pdf','application/pdf');
  const close=await call('closure',{id,version:await v(),action:'close',reason:'Delivered and paid',confirmed:true},BUY);assert.equal(close.status,200,JSON.stringify(close));

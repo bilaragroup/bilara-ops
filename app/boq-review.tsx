@@ -16,6 +16,8 @@ export function waitingOn(user: any, r: Any): '' | 'gm' | 'boq-qty' | 'boq-rate'
   if (!['plan', 'request'].includes(r.kind) || r.closure?.state === 'Closed') return '';
   if (r.gmApproval?.state === 'Pending') return has(user, 'GM') ? 'gm' : '';
   if (r.stage !== 'Submitted' || !has(user, 'BOQ Team', 'GM')) return '';
+  // Sent back by Audit for quantity: the PM corrects it first.
+  if (r.auditReturn?.reason === 'quantity' && !r.auditReturn.fixedAt) return '';
   if (!(Number(r.activityBoqQty) > 0)) return has(user, 'BOQ Team') ? 'boq-qty' : '';
   if (!(rateOf(r) > 0) || !r.boqOwner) return has(user, 'BOQ Team') ? 'boq-rate' : '';
   return 'boq-release';
@@ -244,6 +246,10 @@ export function nextStep(r: Any, records: Any[]): { who: string; what: string } 
   if (r.stage === 'Cancelled') return { who: '', what: 'Cancelled' };
   if (r.stage === 'Rejected') return { who: '', what: 'Rejected — raise a new request if still needed' };
   if (r.gmApproval?.state === 'Pending') return { who: 'GM', what: 'approve the extra quantity (Requests list → tick → Approve)' };
+  if (r.stage === 'Submitted' && r.auditReturn?.reason === 'quantity' && !r.auditReturn.fixedAt)
+    return { who: 'Project manager', what: `correct the quantity — Audit sent it back: "${r.auditReturn.note}" (open the request → Edit)` };
+  if (r.stage === 'Submitted' && r.auditReturn?.reason === 'price')
+    return { who: 'BOQ team', what: `re-check the rate — Audit sent it back for price: "${r.auditReturn.note}" (Review BOQ → Save and release)` };
   if (r.stage === 'Submitted')
     return Number(r.activityBoqQty) > 0
       ? { who: 'BOQ team', what: 'release to Purchase (Review BOQ → Save and release)' }
@@ -268,7 +274,7 @@ export function AuditDecision({ request: r, refresh, onDone }: Any) {
     [error, setError] = useState('');
   const boq = Number(r.boqOriginalRate) || Number(r.kind === 'plan' ? r.boqRate : r.estimateRate) || 0;
   const qty = Number(r.kind === 'plan' ? r.boqQty : r.qty) || 0;
-  async function go(decision: 'Approved' | 'Returned' | 'Rejected') {
+  async function go(decision: 'Approved' | 'Returned' | 'ReturnQty' | 'ReturnPrice' | 'Rejected') {
     setError('');
     const text = note.trim() || (decision === 'Approved' ? 'Approved by Audit' : '');
     if (!text) return setError('Write a note saying why it is sent back or rejected.');
@@ -299,7 +305,9 @@ export function AuditDecision({ request: r, refresh, onDone }: Any) {
       </label>
       <div className="actions">
         <button className="primary" disabled={busy} onClick={() => go('Approved')}>Approve</button>
-        <button className="secondary" disabled={busy} onClick={() => go('Returned')}>Send back to Purchase</button>
+        <button className="secondary" disabled={busy} onClick={() => go('ReturnQty')} title="Quantity is wrong: the PM corrects it, then BOQ releases again">Quantity issue → PM</button>
+        <button className="secondary" disabled={busy} onClick={() => go('ReturnPrice')} title="Price is wrong: the BOQ team re-checks the rate, then it comes back through Purchase">Price issue → BOQ</button>
+        <button className="secondary" disabled={busy} onClick={() => go('Returned')} title="Purchase negotiates a better vendor rate">Renegotiate → Purchase</button>
         <button className="secondary danger" disabled={busy} onClick={() => go('Rejected')}>Reject</button>
       </div>
       {error && <p className="alert red" role="alert">{error}</p>}

@@ -27,7 +27,7 @@ export function billedAmount(p:any){return bills(p).reduce((n,b)=>n+Number(b.amo
 export function billIssues(p:any){
  const issues:string[]=[];const acc=acceptedQty(p),bq=billedQty(p),ba=billedAmount(p),av=acceptedValue(p),rate=Number(p.rate);
  if(bq>acc+EPS)issues.push(`Billed quantity ${round(bq)} ${p.unit} is more than the ${round(acc)} ${p.unit} accepted at site.`);
- for(const b of bills(p))if(Number(b.rate)>rate+0.005)issues.push(`Bill ${b.billNo}: rate ₹${b.rate} is above the PO rate ₹${rate}.`);
+ for(const b of bills(p))if(Number(b.rate)>rate+0.005)issues.push(`Bill ${b.billNo||'(no number)'}: rate ₹${b.rate} is above the PO rate ₹${rate}.`);
  if(ba>av+100)issues.push(`Billed amount ₹${(ba/100).toFixed(2)} is more than the accepted value ₹${(av/100).toFixed(2)}.`);
  return issues;
 }

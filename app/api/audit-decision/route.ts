@@ -14,7 +14,7 @@ async function handlePOST(req:Request,a:Actor){try{
  const ids=Array.isArray(b.ids)?[...new Set<string>(b.ids.filter((id:any)=>typeof id==='string'))]:[];
  if(!ids.length||ids.length>100)return fail('Select between 1 and 100 purchase plan lines.');
  const decision=String(b.decision||''),note=String(b.note||'').trim();
- if(!['Approved','Returned','Rejected'].includes(decision))return fail('Choose Approve, Send back to purchase or Reject.');
+ if(!['Approved','Returned','ReturnQty','ReturnPrice','Rejected'].includes(decision))return fail('Choose Approve, Send back (quantity to PM, price to BOQ, or to Purchase) or Reject.');
  if(!note||note.length>2000||b.confirmed!==true)return fail('Enter a decision note and confirm that you are authorized to record it.');
  const rows:any[]=[];
  for(const id of ids){
@@ -38,6 +38,11 @@ async function handlePOST(req:Request,a:Actor){try{
    data.stage='Audit approved';data.auditOwner=a.name;data.auditBy=a.email;data.reviewNote=note;
    data.auditSavings={...saving,at:now};
    if(r.kind==='request')data.status='Approved';
+  }else if(decision==='ReturnQty'||decision==='ReturnPrice'){
+   // Quantity problem → back to the PM to correct it; price problem → back to the BOQ team to re-check
+   // the rate. Either way the request restarts from BOQ release; the vendor details are kept.
+   data.stage='Submitted';data.auditReturn={reason:decision==='ReturnQty'?'quantity':'price',by:a.name,email:a.email,note,at:now,vendor:r.vendor,quoteRate:r.quoteRate,qty:r.kind==='plan'?r.boqQty:r.qty};
+   if(r.kind==='request')data.status='Pending';
   }else if(decision==='Returned'){
    // Back to Purchase for a better rate; the BOQ baseline stays frozen.
    data.stage='BOQ priced';data.auditReturn={by:a.name,email:a.email,note,at:now,vendor:r.vendor,quoteRate:r.quoteRate};
@@ -48,7 +53,7 @@ async function handlePOST(req:Request,a:Actor){try{
   }
   data.stageDates={...(data.stageDates||{}),[data.stage]:now};
   statements.push(
-   db.prepare('INSERT INTO history (id,record_id,action,data,at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM history WHERE id=?)').bind(crypto.randomUUID(),r.id,decision==='Approved'?'Audit approved':decision==='Returned'?'Audit returned to purchase':'Audit rejected',JSON.stringify({before:r,after:data,by:a.name,note}),now,marker),
+   db.prepare('INSERT INTO history (id,record_id,action,data,at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM history WHERE id=?)').bind(crypto.randomUUID(),r.id,decision==='Approved'?'Audit approved':decision==='Returned'?'Audit returned to purchase':decision==='ReturnQty'?'Audit returned to PM (quantity)':decision==='ReturnPrice'?'Audit returned to BOQ (price)':'Audit rejected',JSON.stringify({before:r,after:data,by:a.name,note}),now,marker),
    db.prepare('UPDATE records SET data=?,version=version+1,updated=? WHERE id=? AND EXISTS(SELECT 1 FROM history WHERE id=?)').bind(JSON.stringify(data),now,r.id,marker));
  }
  const result=await db.batch(statements);
