@@ -2760,6 +2760,8 @@ export default function Control({ user, testUserSwitch }: any) {
                           set={setDraft}
                         />
                       )}
+                      {/* New ad hoc requests: rates come from BOQ review, vendor and rate from the Purchase plan. */}
+                      {!(draft.kind === 'request' && !draft.id) && (
                       <details
                         className="full form-section"
                         open={draft.stage !== 'Submitted' || undefined}
@@ -2820,6 +2822,7 @@ export default function Control({ user, testUserSwitch }: any) {
                           
                         </div>
                       </details>
+                      )}
                     </>
                   )}
                   {['plan', 'request', 'payment'].includes(draft.kind) && (
