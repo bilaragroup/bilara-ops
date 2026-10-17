@@ -405,3 +405,10 @@ button.danger{color:#a1312a}
 .wide-dialog{max-width:min(850px,calc(100vw - 16px))!important}.bulk-dialog{max-width:min(1000px,calc(100vw - 16px))!important}
 .process-button{padding:6px 14px!important;font-size:13px;min-height:0}
 .nav-new{margin-left:6px;font-size:11px;font-weight:600;background:#e0ecff;color:#1d4ed8;border-radius:10px;padding:1px 7px;white-space:nowrap}.dark .nav-new{background:#1e3a5f;color:#bcd6ff}.upcoming-deliveries{margin-bottom:18px}
+/* Plumbing & electrical rows on Purchase orders */
+.pe-order-row{flex-wrap:wrap;align-items:flex-end!important;gap:14px}
+.pe-order-row>div{flex:1 1 260px;min-width:0}
+.pe-order-row>div small{display:block;margin-top:4px}
+.pe-order-row>form{flex:2 1 520px;margin:0;justify-content:flex-end}
+.pe-order-row>form .field{flex:1 1 140px}
+.pe-order-row>form .primary{height:42px}
