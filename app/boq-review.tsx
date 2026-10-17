@@ -260,3 +260,49 @@ export function nextStep(r: Any, records: Any[]): { who: string; what: string } 
     return { who: 'Accounts', what: 'check the bill and pay (Payment forecast → Bills to check / Record payment)' };
   return { who: 'Purchase', what: 'close the request (open it → Completion & settlement)' };
 }
+
+/** Audit's decision on one request, right in the request: Approve / Send back / Reject. */
+export function AuditDecision({ request: r, refresh, onDone }: Any) {
+  const [note, setNote] = useState(''),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState('');
+  const boq = Number(r.boqOriginalRate) || Number(r.kind === 'plan' ? r.boqRate : r.estimateRate) || 0;
+  const qty = Number(r.kind === 'plan' ? r.boqQty : r.qty) || 0;
+  async function go(decision: 'Approved' | 'Returned' | 'Rejected') {
+    setError('');
+    const text = note.trim() || (decision === 'Approved' ? 'Approved by Audit' : '');
+    if (!text) return setError('Write a note saying why it is sent back or rejected.');
+    setBusy(true);
+    try {
+      const [now] = await latest([r.id]);
+      await post('/api/audit-decision', { ids: [r.id], versions: { [r.id]: now?.version ?? r.version }, decision, note: text, confirmed: true });
+      await refresh();
+      onDone?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="panel boq-review">
+      <h3>Audit decision</h3>
+      <p className="muted">
+        {r.vendor || 'No vendor'} · vendor rate ₹{r.quoteRate ?? '—'}
+        {boq ? ` · BOQ rate ₹${boq}` : ''} · {qty} {r.unit}
+        {r.quoteReference ? ` · quote ${r.quoteReference}` : ''}
+        {boq && Number(r.quoteRate) > boq ? ' · above the BOQ rate' : ''}
+      </p>
+      <label className="field">
+        <span>Note</span>
+        <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} placeholder="Optional to approve; required to send back or reject" />
+      </label>
+      <div className="actions">
+        <button className="primary" disabled={busy} onClick={() => go('Approved')}>Approve</button>
+        <button className="secondary" disabled={busy} onClick={() => go('Returned')}>Send back to Purchase</button>
+        <button className="secondary danger" disabled={busy} onClick={() => go('Rejected')}>Reject</button>
+      </div>
+      {error && <p className="alert red" role="alert">{error}</p>}
+    </section>
+  );
+}

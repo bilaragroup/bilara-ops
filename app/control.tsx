@@ -13,7 +13,7 @@ const TRADES = ['Structural', 'Electrical', 'Plumbing'];
 import { defaultSettings } from '@/lib/settings';
 import { RATE_CARD_ITEMS, RATE_CARD_ITEM_DEFAULTS } from '@/lib/rate-card';
 import GMApproval from './gm-approval';
-import BoqReview, { waitingOn, waitingText, decide, nextStep } from './boq-review';
+import BoqReview, { waitingOn, waitingText, decide, nextStep, AuditDecision } from './boq-review';
 import PurchasePlan from './purchase-plan';
 import CarryForward from './carry-forward';
 import PeriodPicker from './period-picker';
@@ -1372,7 +1372,8 @@ export default function Control({ user, testUserSwitch }: any) {
                         <button
                           className="textbutton"
                           onClick={() =>
-                            has(user, 'BOQ Team') && waitingOn(user, r).startsWith('boq')
+                            (has(user, 'BOQ Team') && waitingOn(user, r).startsWith('boq')) ||
+                            (has(user, 'Audit') && r.stage === 'Vendors finalized')
                               ? setSelected(r)
                               : start('request', r)
                           }
@@ -2188,6 +2189,17 @@ export default function Control({ user, testUserSwitch }: any) {
                       request={selected}
                       records={records}
                       settings={settings.values}
+                      refresh={refresh}
+                      onDone={() => setSelected(null)}
+                    />
+                  )}
+                {has(user, 'Audit') &&
+                  ['plan', 'request'].includes(selected.kind) &&
+                  selected.stage === 'Vendors finalized' &&
+                  selected.closure?.state !== 'Closed' && (
+                    <AuditDecision
+                      key={'a' + selected.id + ':' + selected.version}
+                      request={selected}
                       refresh={refresh}
                       onDone={() => setSelected(null)}
                     />
