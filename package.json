@@ -8,6 +8,7 @@
   "scripts": {
     "predev": "CI=1 npx --yes wrangler@4 d1 migrations apply DB --local --config wrangler.local.jsonc",
     "dev": "vinext dev",
+    "stop": "node scripts/stop-local.mjs",
     "db:migrate": "CI=1 npx --yes wrangler@4 d1 migrations apply DB --local --config wrangler.local.jsonc",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
